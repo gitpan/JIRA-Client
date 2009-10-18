@@ -11,11 +11,11 @@ JIRA::Client - An extended interface to JIRA's SOAP API.
 
 =head1 VERSION
 
-Version 0.16
+Version 0.17
 
 =cut
 
-our $VERSION = '0.16';
+our $VERSION = '0.17';
 
 =head1 SYNOPSIS
 
@@ -152,6 +152,83 @@ sub DESTROY {
     # shift->logout();
 }
 
+# These are some helper functions to convert names into ids.
+
+sub _convert_type {
+    my ($self, $type) = @_;
+    if ($type =~ /\D/) {
+	my $types = $self->get_issue_types();
+	croak "There is no issue type called '$type'.\n"
+	    unless exists $types->{$type};
+	return $types->{$type}{id};
+    }
+    return $type;
+}
+
+sub _convert_priority {
+    my ($self, $prio) = @_;
+    if ($prio =~ /\D/) {
+	my $prios = $self->get_priorities();
+	croak "There is no priority called '$prio'.\n"
+	    unless exists $prios->{$prio};
+	return $prios->{$prio}{id};
+    }
+    return $prio;
+}
+
+sub _convert_components {
+    my ($self, $icomps, $project) = @_; # issue components, project key
+    croak "The 'components' value must be an ARRAY ref.\n"
+       unless ref $icomps && ref $icomps eq 'ARRAY';
+    my $pcomps;			# project components
+    foreach my $c (@{$icomps}) {
+       next if ref $c;
+       if ($c =~ /\D/) {
+           # It's a component name. Let us convert it into its id.
+           $pcomps = $self->get_components($project) unless defined $pcomps;
+           croak "There is no component called '$c'.\n" unless exists $pcomps->{$c};
+           $c = $pcomps->{$c}{id};
+       }
+       # Now we can convert it into an object.
+       $c = RemoteComponent->new($c);
+    }
+}
+
+sub _convert_versions {
+    my ($self, $iversions, $project) = @_;  # issue versions, project key
+    croak "The '$iversions' value must be a ARRAY ref.\n"
+       unless ref $iversions && ref $iversions eq 'ARRAY';
+    my $pversions;
+    foreach my $v (@{$iversions}) {
+       next if ref $v;
+       if ($v =~ /\D/) {
+           # It is a version name. Let us convert it into its id.
+           $pversions = $self->get_versions($project) unless defined $pversions;
+           croak "There is no version called '$v'.\n" unless exists $pversions->{$v};
+           $v = $pversions->{$v}{id};
+       }
+       # Now we can convert it into an object.
+       $v = RemoteVersion->new($v);
+    }
+}
+
+sub _convert_custom_fields {
+    my ($self, $custom_fields) = @_;
+    croak "The 'custom_fields' value must be a HASH ref.\n"
+	unless ref $custom_fields && ref $custom_fields eq 'HASH';
+    my %id2values;
+    while (my ($id, $values) = each %$custom_fields) {
+	unless ($id =~ /^customfield_\d+$/) {
+	    my $cfs = $self->get_custom_fields();
+	    croak "Can't find custom field named '$id'.\n"
+		unless exists $cfs->{$id};
+	    $id = $cfs->{$id}{id};
+	}
+	$id2values{$id} = ref $values ? $values : [$values];
+    }
+    return \%id2values;
+}
+
 =item B<create_issue> HASH_REF
 
 Creates a new issue given a hash containing the initial values for its
@@ -199,83 +276,28 @@ sub create_issue
     }
 
     # Convert type names
-    if ($hash->{type} =~ /\D/) {
-	my $type  = $hash->{type};
-	my $types = $self->get_issue_types();
-
-	croak "There is no issue type called '$type'.\n"
-	    unless exists $types->{$type};
-	$hash->{type} = $types->{$type}{id};
-    }
+    $hash->{type} = $self->_convert_type($hash->{type});
 
     # Convert priority names
-    if (exists $hash->{priority} && $hash->{priority} =~ /\D/) {
-	my $prio  = $hash->{priority};
-	my $prios = $self->get_priorities();
-
-	croak "There is no priority called '$prio'.\n"
-	    unless exists $prios->{$prio};
-	$hash->{priority} = $prios->{$prio}{id};
-    }
+    $hash->{priority} = $self->_convert_priority($hash->{priority})
+	if exists $hash->{priority};
 
     # Convert component names
-    if (exists $hash->{components}) {
-	croak "The 'components' value must be an ARRAY ref.\n"
-	    unless ref $hash->{components} && ref $hash->{components} eq 'ARRAY';
-	my $comps;
-	foreach my $c (@{$hash->{components}}) {
-	    if (! ref $c) {
-		if ($c =~ /\D/) {
-		    # It is a component name. Let us convert it into its id.
-		    $comps = $self->get_components($hash->{project}) unless defined $comps;
-		    croak "There is no component called '$c'.\n" unless exists $comps->{$c};
-		    $c = $comps->{$c}{id};
-		}
-		# Now we can convert it into an object.
-		$c = RemoteComponent->new($c);
-	    }
-	}
-    }
+    $self->_convert_components($hash->{components}, $hash->{project})
+	if exists $hash->{components};
 
     # Convert version ids and names into RemoteVersion objects
     for my $versions (qw/fixVersions affectsVersions/) {
-	if (exists $hash->{$versions}) {
-	    croak "The '$versions' value must be a ARRAY ref.\n"
-		unless ref $hash->{$versions} && ref $hash->{$versions} eq 'ARRAY';
-	    my $verss;
-	    foreach my $v (@{$hash->{$versions}}) {
-		if (! ref $v) {
-		    if ($v =~ /\D/) {
-			# It is a version name. Let us convert it into its id.
-			$verss = $self->get_versions($hash->{project}) unless defined $verss;
-			croak "There is no version called '$v'.\n" unless exists $verss->{$v};
-			$v = $verss->{$v}{id};
-		    }
-		    # Now we can convert it into an object.
-		    $v = RemoteVersion->new($v);
-		}
-	    }
-	}
+	$self->_convert_versions($hash->{$versions}, $hash->{project})
+	    if exists $hash->{$versions};
     }
 
     # Convert custom fields
-    if (my $cfs = delete $hash->{custom_fields}) {
-	croak "The 'custom_fields' value must be a HASH ref.\n"
-	    unless ref $cfs && ref $cfs eq 'HASH';
+    if (my $custom_fields = delete $hash->{custom_fields}) {
 	my @cfvs;
-	while (my ($id, $values) = each %$cfs) {
-	    unless ($id =~ /^customfield_\d+$/) {
-		my $cfs = $self->get_custom_fields();
-		croak "Can't find custom field named '$id'.\n"
-		    unless exists $cfs->{$id};
-		$id = $cfs->{$id}{id};
-	    }
-	    $values = [$values] unless ref $values;
-	    push @cfvs, bless({
-		customfieldId => $id,
-		key => undef,
-		values => $values,
-	    } => 'RemoteCustomFieldValue');
+	my $id2values = $self->_convert_custom_fields($custom_fields);
+	while (my ($id, $values) = each %$id2values) {
+	    push @cfvs, RemoteCustomFieldValue->new($id, $values);
 	}
 	$hash->{customFieldValues} = \@cfvs;
     }
@@ -611,76 +633,72 @@ sub progress_workflow_action_safely {
     }
 
     # Convert priority names
-    if (exists $params->{priority} && $params->{priority} =~ /\D/) {
-	my $prio  = $params->{priority};
-	my $prios = $self->get_priorities();
-
-	croak "There is no priority called '$prio'.\n"
-	    unless exists $prios->{$prio};
-	$params->{priority} = $prios->{$prio}{id};
-    }
+    $params->{priority} = $self->_convert_priority($params->{priority})
+	if exists $params->{priority};
 
     # Convert component names
     if (exists $params->{components}) {
-	croak "The 'components' value must be an ARRAY ref.\n"
-	    unless ref $params->{components} && ref $params->{components} eq 'ARRAY';
-	foreach my $c (@{$params->{components}}) {
-	    if (ref $c) {
-		die "Unexpected object in components list (", ref($c), ")\n"
-		    unless ref $c eq 'RemoteComponent';
-		$c = $c->{id};
-	    }
-	    elsif ($c =~ /\D/) {
-		# It is a component name. Let us convert it into its id.
-		my $components = $self->get_components($project);
-		croak "There is no component called '$c'.\n" unless exists $components->{$c};
-		$c = $components->{$c}{id};
-	    }
-	}
+	$self->_convert_components($params->{components}, $project);
+	# Now convert objects into ids.
+	$_ = $_->{id} foreach @{$params->{components}};
     }
 
     # Convert version names and RemoteVersion objects into version ids
     for my $versions (qw/fixVersions affectsVersions/) {
 	if (exists $params->{$versions}) {
-	    croak "The '$versions' value must be a ARRAY ref.\n"
-		unless ref $params->{$versions} && ref $params->{$versions} eq 'ARRAY';
-	    foreach my $v (@{$params->{$versions}}) {
-		if (ref $v) {
-		    die "Unexpected object in version list (", ref($v), ")\n"
-			unless ref $v eq 'RemoteVersion';
-		    $v = $v->{id};
-		}
-		elsif ($v =~ /\D/) {
-		    # It is a version name. Let us convert it into its id.
-		    my $versions = $self->get_versions($project);
-		    croak "There is no version called '$v'.\n" unless exists $versions->{$v};
-		    $v = $versions->{$v}{id};
-		}
-	    }
+	    $self->_convert_versions($params->{$versions}, $project);
+	    # Now convert objects into ids.
+	    $_ = $_->{id} foreach @{$params->{$versions}};
 	}
     }
     if (exists $params->{affectsVersions}) {
-	# This is due to a bug in JIRA
-	# http://jira.atlassian.com/browse/JRA-12300
+	# This is due to a bug in JIRA: http://jira.atlassian.com/browse/JRA-12300
 	$params->{versions} = delete $params->{affectsVersions};
     }
 
     # Convert custom fields
     if (my $custom_fields = delete $params->{custom_fields}) {
-	croak "The 'custom_fields' value must be a HASH ref.\n"
-	    unless ref $custom_fields && ref $custom_fields eq 'HASH';
-	while (my ($id, $values) = each %$custom_fields) {
-	    unless ($id =~ /^customfield_\d+$/) {
-		my $cfs = $self->get_custom_fields();
-		croak "Can't find custom field named '$id'.\n"
-		    unless exists $cfs->{$id};
-		$id = $cfs->{$id}{id};
-	    }
-	    $params->{$id} = [$values] unless ref $values;
+	my $id2values = $self->_convert_custom_fields($custom_fields);
+	while (my ($id, $values) = each %$id2values) {
+	    $params->{$id} = $values;
 	}
     }
 
     $self->progressWorkflowAction($key, $action, $params);
+}
+
+=item B<get_issue_custom_field_values> ISSUE, NAME_OR_IDs
+
+This method receives a RemoteField object and a list of names or ids
+of custom fields. It returns a list of references to the ARRAYs
+containing the values of the ISSUE's custom fields denoted by their
+NAME_OR_IDs. Returns undef for custom fields not set on the issue.
+
+In scalar context it returns a reference to the list.
+
+=cut
+
+sub get_issue_custom_field_values {
+    my ($self, $issue, @cfs) = @_;
+    my @values;
+    my $cfs;
+  CUSTOM_FIELD:
+    foreach my $cf (@cfs) {
+	unless ($cf =~ /^customfield_\d+$/) {
+	    $cfs = $self->get_custom_fields() unless defined $cfs;
+	    croak "Can't find custom field named '$cf'.\n"
+		unless exists $cfs->{$cf};
+	    $cf = $cfs->{$cf}{id};
+	}
+	foreach my $rcfv (@{$issue->{customFieldValues}}) {
+	    if ($rcfv->{customfieldId} eq $cf) {
+		push @values, $rcfv->{values};
+		next CUSTOM_FIELD;
+	    }
+	}
+	push @values, undef;	# unset custom field
+    }
+    return wantarray ? @values : \@values;
 }
 
 =back
@@ -723,6 +741,34 @@ sub new {
 
     $values = [$values] unless ref $values;
     bless({id => $id, values => $values}, $class);
+}
+
+=item B<RemoteCustomFieldValue-E<gt>new> ID, VALUES
+
+The RemoteCustomFieldValue object represents the value of a
+custom_field of an issue. It needs two arguments:
+
+=over
+
+=item ID
+
+The field name, which must be a valid custom_field key.
+
+=item VALUES
+
+A scalar or an array of scalars.
+
+=back
+
+=cut
+
+package RemoteCustomFieldValue;
+
+sub new {
+    my ($class, $id, $values) = @_;
+
+    $values = [$values] unless ref $values;
+    bless({customfieldId => $id, key => undef, values => $values} => $class);
 }
 
 =item B<RemoteComponent-E<gt>new> ID, NAME
