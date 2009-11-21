@@ -11,11 +11,11 @@ JIRA::Client - An extended interface to JIRA's SOAP API.
 
 =head1 VERSION
 
-Version 0.20
+Version 0.21
 
 =cut
 
-our $VERSION = '0.20';
+our $VERSION = '0.21';
 
 =head1 SYNOPSIS
 
@@ -71,22 +71,20 @@ ones before making the actual SOAP call. Note that this is an option,
 i.e, you can either pass the elaborate structures by yourself or the
 simpler ones in the call.
 
+The items below are all the implemented implicit conversions. Wherever
+a parameter of the type specified first is required (as an rvalue, not
+as an lvalue) by an API method you can safely pass a value of the type
+specified second.
+
 =over 4
 
-=item B<addComment>
+=item A B<issue key> as a string can be specified by a B<RemoteIssue> object.
 
-The second argument can be a I<string> instead of a C<RemoteComment>
-object.
+=item A B<RemoteComment> object can be specified by a string.
 
-=item B<progressWorkflowAction>
+=item A B<filterId> as a string can be specified by a B<RemoteFilter> object.
 
-The third argument can be a hash mapping field I<ids> to field
-I<values> instead of an array of RemoteFieldValue objects.
-
-=item B<updateIssue>
-
-The second argument can be a hash mapping field I<ids> to field
-I<values> instead of an array of RemoteFieldValue objects.
+=item A B<RemoteFieldValue> object array can be specified by a hash mapping field names to values.
 
 =back
 
@@ -178,6 +176,18 @@ sub _convert_priority {
     return;
 }
 
+sub _convert_resolution {
+    my ($self, $hash) = @_;
+    my $resolution = $hash->{resolution};
+    if ($resolution =~ /\D/) {
+        my $resolutions = $self->get_resolutions();
+        croak "There is no resolution called '$resolution'.\n"
+            unless exists $resolutions->{$resolution};
+        $hash->{resolution} = $resolutions->{$resolution}{name};
+    }
+    return;
+}
+
 sub _convert_components {
     my ($self, $hash, $key, $project) = @_;
     my $comps = $hash->{components};
@@ -188,6 +198,8 @@ sub _convert_components {
        next if ref $c;
        if ($c =~ /\D/) {
            # It's a component name. Let us convert it into its id.
+	   croak "Cannot convert component names because I don't know for which project.\n"
+	       unless $project;
            $pcomps = $self->get_components($project) unless defined $pcomps;
            croak "There is no component called '$c'.\n" unless exists $pcomps->{$c};
            $c = $pcomps->{$c}{id};
@@ -208,6 +220,8 @@ sub _convert_versions {
        next if ref $v;
        if ($v =~ /\D/) {
            # It is a version name. Let us convert it into its id.
+	   croak "Cannot convert version names because I don't know for which project.\n"
+	       unless $project;
            $pversions = $self->get_versions($project) unless defined $pversions;
            croak "There is no version called '$v'.\n" unless exists $pversions->{$v};
            $v = $pversions->{$v}{id};
@@ -220,7 +234,13 @@ sub _convert_versions {
 
 sub _convert_duedate {
     my ($self, $hash) = @_;
-    if (my ($year, $month, $day) = ($hash->{duedate} =~ /^(\d{4})-(\d{2})-(\d{2})/)) {
+    my $duedate = $hash->{duedate};
+    if (ref $duedate) {
+	croak "duedate fields must be set with DateTime references.\n"
+	    unless ref $duedate eq 'DateTime';
+	$hash->{duedate} = $duedate->strftime('%d/%B/%y');
+    }
+    elsif (my ($year, $month, $day) = ($duedate =~ /^(\d{4})-(\d{2})-(\d{2})/)) {
 	$month >= 1 and $month <= 12
 	    or croak "Invalid duedate ($hash->{duedate})";
 	$hash->{duedate} = join(
@@ -259,6 +279,7 @@ my %_converters = (
     duedate         => \&_convert_duedate,
     fixVersions     => \&_convert_versions,
     priority        => \&_convert_priority,
+    resolution      => \&_convert_resolution,
     type            => \&_convert_type,
 );
 
@@ -313,7 +334,7 @@ sub create_issue
 
     # Convert some fields' values
     foreach my $field (grep {exists $_converters{$_}} keys %$hash) {
-	&{$_converters{$field}}($self, $hash, $field, $hash->{project});
+	$_converters{$field}->($self, $hash, $field, $hash->{project});
     }
 
     # Substitute customFieldValues for custom_fields
@@ -322,6 +343,70 @@ sub create_issue
     }
 
     return $self->createIssue($hash);
+}
+
+=item B<update_issue> ISSUE_OR_KEY, HASH_REF
+
+Update a issue given a hash containing the values for its fields. The
+first argument may be an issue key or a RemoteIssue object.
+
+This is an easier to use version of the updateIssue API method because
+it accepts the same shortcuts that create_issue does.
+
+=cut
+
+sub update_issue
+{
+    my ($self, $issue, $params) = @_;
+    my $key;
+    if (ref $issue) {
+	croak "update_issue's first argument must be a RemoteIssue reference.\n"
+	    unless ref $issue eq 'RemoteIssue';
+	$key = $issue->{key};
+    }
+    else {
+	$key = $issue;
+	$issue = $self->getIssue($key);
+    }
+
+    croak "update_issue requires two arguments.\n"
+        unless defined $params;
+    croak "update_issue's second argument must be a HASH ref.\n"
+        unless ref $params && ref $params eq 'HASH';
+
+    my ($project) = ($key =~ /^([^-]+)/);
+
+    # Convert some fields' values
+    foreach my $field (grep {exists $_converters{$_}} keys %$params) {
+	$_converters{$field}->($self, $params, $field, $project);
+    }
+
+    # Convert RemoteComponent objects into component ids
+    if (my $comps = $params->{components}) {
+        $_ = $_->{id} foreach @$comps;
+    }
+
+    # Convert RemoteVersion objects into version ids
+    for my $field (qw/fixVersions affectsVersions/) {
+        if (my $versions = $params->{$field}) {
+            $_ = $_->{id} foreach @$versions;
+        }
+    }
+    # Due to a bug in JIRA
+    # (http://jira.atlassian.com/browse/JRA-12300) we have to
+    # substitute 'versions' for the 'affectsVersions' key
+    if (my $versions = delete $params->{affectsVersions}) {
+        $params->{versions} = $versions;
+    }
+
+    # Expand the custom_fields hash into the custom fields themselves.
+    if (my $custom_fields = delete $params->{custom_fields}) {
+        while (my ($id, $values) = each %$custom_fields) {
+            $params->{$id} = $values;
+        }
+    }
+
+    return $self->updateIssue($key, $params);
 }
 
 =item B<get_issue_types>
@@ -333,14 +418,7 @@ RemoteIssueType objects describing them.
 
 sub get_issue_types {
     my ($self) = @_;
-    unless (defined $self->{cache}{issue_types}) {
-        my %issue_types;
-        my $types = $self->getIssueTypes();
-        foreach my $type (@$types) {
-            $issue_types{$type->{name}} = $type;
-        }
-        $self->{cache}{issue_types} = \%issue_types;
-    }
+    $self->{cache}{issue_types} ||= {map {$_->{name} => $_} @{$self->getIssueTypes()}};
     return $self->{cache}{issue_types};
 }
 
@@ -353,15 +431,21 @@ RemotePriority objects describing them.
 
 sub get_priorities {
     my ($self) = @_;
-    unless (exists $self->{cache}{priorities}) {
-        my %priorities;
-        my $prios = $self->getPriorities();
-        foreach my $prio (@$prios) {
-            $priorities{$prio->{name}} = $prio;
-        }
-        $self->{cache}{priorities} = \%priorities;
-    }
+    $self->{cache}{priorities} ||= {map {$_->{name} => $_} @{$self->getPriorities()}};
     return $self->{cache}{priorities};
+}
+
+=item B<get_resolutions>
+
+Returns a hash mapping a server's resolution names to the
+RemoteResolution objects describing them.
+
+=cut
+
+sub get_resolutions {
+    my ($self) = @_;
+    $self->{cache}{resolutions} ||= {map {$_->{name} => $_} @{$self->getResolutions()}};
+    return $self->{cache}{resolutions};
 }
 
 =item B<get_custom_fields>
@@ -379,14 +463,7 @@ keeps the custom fields information in a cache.
 
 sub get_custom_fields {
     my ($self) = @_;
-    unless (exists $self->{cache}{custom_fields}) {
-        my %custom_fields;
-        my $cfs = $self->getCustomFields();
-        foreach my $cf (@$cfs) {
-            $custom_fields{$cf->{name}} = $cf;
-        }
-        $self->{cache}{custom_fields} = \%custom_fields;
-    }
+    $self->{cache}{custom_fields} ||= {map {$_->{name} => $_} @{$self->getCustomFields()}};
     return $self->{cache}{custom_fields};
 }
 
@@ -415,16 +492,8 @@ RemoteComponent objects describing them.
 
 sub get_components {
     my ($self, $project_key) = @_;
-    my $cache = $self->{cache}{components};
-    unless (exists $cache->{$project_key}) {
-        my %components;
-        my $components = $self->getComponents($project_key);
-        foreach my $component (@$components) {
-            $components{$component->{name}} = $component;
-        }
-        $cache->{$project_key} = \%components;
-    }
-    return $cache->{$project_key};
+    $self->{cache}{components}{$project_key} ||= {map {$_->{name} => $_} @{$self->getComponents($project_key)}};
+    return $self->{cache}{components}{$project_key};
 }
 
 =item B<get_versions> PROJECT_KEY
@@ -436,16 +505,8 @@ objects describing them.
 
 sub get_versions {
     my ($self, $project_key) = @_;
-    my $cache = $self->{cache}{versions};
-    unless (exists $cache->{$project_key}) {
-        my %versions;
-        my $versions = $self->getVersions($project_key);
-        foreach my $version (@$versions) {
-            $versions{$version->{name}} = $version;
-        }
-        $cache->{$project_key} = \%versions;
-    }
-    return $cache->{$project_key};
+    $self->{cache}{versions}{$project_key} ||= {map {$_->{name} => $_} @{$self->getVersions($project_key)}};
+    return $self->{cache}{versions}{$project_key};
 }
 
 =item B<get_favourite_filters>
@@ -457,16 +518,8 @@ ids.
 
 sub get_favourite_filters {
     my ($self) = @_;
-    my $cache = $self->{cache};
-    unless (exists $cache->{filters}) {
-        my %filters;
-        my $filters = $self->getFavouriteFilters();
-        foreach my $filter (@$filters) {
-            $filters{$filter->{name}} = $filter;
-        }
-        $cache->{filters} = \%filters;
-    }
-    return $cache->{filters};
+    $self->{cache}{filters} ||= {map {$_->{name} => $_} @{$self->getFavouriteFilters()}};
+    return $self->{cache}{filters};
 }
 
 =item B<set_filter_iterator> FILTER [, CACHE_SIZE]
@@ -656,7 +709,7 @@ sub progress_workflow_action_safely {
 
     # Convert some fields' values
     foreach my $field (grep {exists $_converters{$_}} keys %$params) {
-	&{$_converters{$field}}($self, $params, $field, $project);
+	$_converters{$field}->($self, $params, $field, $project);
     }
 
     # Convert RemoteComponent objects into component ids
@@ -829,35 +882,52 @@ package JIRA::Client;
 # zero-based, after the authentication token.
 
 my %typeof = (
-    addAttachmentsToIssue              => {3 => 'base64Binary'},
-    addComment                         => {1 => \&_cast_remote_comment},
-    archiveVersion                     => {2 => 'boolean'},
-    createIssueWithSecurityLevel       => {1 => 'long'},
-    deleteProjectAvatar                => {0 => 'long'},
-    deleteProjectRole                  => {1 => 'boolean'},
-    getComment                         => {0 => 'long'},
-    getIssueCountForFilter             => {0 => \&_cast_filter_name_to_id},
-    getIssuesFromFilter                => {0 => \&_cast_filter_name_to_id},
-    getIssuesFromFilterWithLimit       => {0 => \&_cast_filter_name_to_id, 1 => 'int', 2 => 'int'},
-    getIssuesFromJqlSearch             => {1 => 'int'},
-    getIssuesFromTextSearchWithLimit   => {1 => 'int', 2 => 'int'},
-    getIssuesFromTextSearchWithProject => {2 => 'int'},
-    getProjectAvatars                  => {1 => 'boolean'},
-    getProjectById                     => {0 => 'long'},
-    getProjectRole                     => {0 => 'long'},
-    getProjectWithSchemesById          => {0 => 'long'},
-    getResolutionDateById              => {0 => 'long'},
-    progressWorkflowAction             => {2 => \&_cast_remote_field_values},
-    setProjectAvatar                   => {1 => 'long'},
-    updateIssue                        => {1 => \&_cast_remote_field_values},
+    addAttachmentsToIssue              	     => {0 => \&_cast_issue_key, 3 => 'base64Binary'},
+    addBase64EncodedAttachmentsToIssue 	     => {0 => \&_cast_issue_key},
+    addComment                         	     => {0 => \&_cast_issue_key, 1 => \&_cast_remote_comment},
+    addWorklogAndAutoAdjustRemainingEstimate => {0 => \&_cast_issue_key},
+    addWorklogAndRetainRemainingEstimate     => {0 => \&_cast_issue_key},
+    addWorklogWithNewRemainingEstimate       => {0 => \&_cast_issue_key},
+    archiveVersion                     	     => {2 => 'boolean'},
+    createIssueWithSecurityLevel       	     => {1 => 'long'},
+    deleteIssue                 	     => {0 => \&_cast_issue_key},
+    deleteProjectAvatar                	     => {0 => 'long'},
+    deleteProjectRole                  	     => {1 => 'boolean'},
+    getAttachmentsFromIssue           	     => {0 => \&_cast_issue_key},
+    getAvailableActions           	     => {0 => \&_cast_issue_key},
+    getComment                         	     => {0 => 'long'},
+    getComments                        	     => {0 => \&_cast_issue_key},
+    getFieldsForAction                 	     => {0 => \&_cast_issue_key},
+    getFieldsForEdit                 	     => {0 => \&_cast_issue_key},
+    getIssue	                 	     => {0 => \&_cast_issue_key},
+    getIssueCountForFilter             	     => {0 => \&_cast_filter_name_to_id},
+    getIssuesFromFilter                	     => {0 => \&_cast_filter_name_to_id},
+    getIssuesFromFilterWithLimit       	     => {0 => \&_cast_filter_name_to_id, 1 => 'int', 2 => 'int'},
+    getIssuesFromJqlSearch             	     => {1 => 'int'},
+    getIssuesFromTextSearchWithLimit   	     => {1 => 'int', 2 => 'int'},
+    getIssuesFromTextSearchWithProject 	     => {2 => 'int'},
+    getProjectAvatars                  	     => {1 => 'boolean'},
+    getProjectById                     	     => {0 => 'long'},
+    getProjectRole                     	     => {0 => 'long'},
+    getProjectWithSchemesById          	     => {0 => 'long'},
+    getResolutionDateById              	     => {0 => 'long'},
+    getResolutionDateByKey             	     => {0 => \&_cast_issue_key},
+    getSecurityLevel             	     => {0 => \&_cast_issue_key},
+    getWorklogs		             	     => {0 => \&_cast_issue_key},
+    hasPermissionToCreateWorklog       	     => {0 => \&_cast_issue_key},
+    progressWorkflowAction             	     => {0 => \&_cast_issue_key, 2 => \&_cast_remote_field_values},
+    setProjectAvatar                   	     => {1 => 'long'},
+    updateIssue                        	     => {0 => \&_cast_issue_key, 1 => \&_cast_remote_field_values},
 );
+
+sub _cast_issue_key {
+    my ($self, $issue) = @_;
+    return ref $issue ? $issue->{key} : $issue;
+}
 
 sub _cast_remote_comment {
     my ($self, $arg) = @_;
-    unless (ref $arg) {
-        return bless({body => $arg}, 'RemoteComment');
-    }
-    return $arg;
+    return ref $arg ? $arg : bless({body => $arg} => 'RemoteComment');
 }
 
 sub _cast_filter_name_to_id {
@@ -872,11 +942,11 @@ sub _cast_filter_name_to_id {
 sub _cast_remote_field_values {
     my ($self, $arg) = @_;
     if (ref $arg && ref $arg eq 'HASH') {
-        my @params;
-        while (my ($id, $values) = each %$arg) {
-            push @params, RemoteFieldValue->new($id, $values);
-        }
-        return \@params;
+	# Convert some fields' values
+	foreach my $field (grep {exists $_converters{$_}} keys %$arg) {
+	    $_converters{$field}->($self, $arg, $field);
+	}
+	return [map {RemoteFieldValue->new($_, $arg->{$_})} keys %$arg];
     }
     return $arg;
 }
@@ -921,6 +991,11 @@ sub AUTOLOAD {
         if defined $call->fault();
     return $call->result();
 }
+
+=head1 EXAMPLES
+
+Please, see the examples under the C<examples> directory in the module
+distribution.
 
 =head1 AUTHOR
 
