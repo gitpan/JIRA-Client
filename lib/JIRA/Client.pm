@@ -11,11 +11,11 @@ JIRA::Client - An extended interface to JIRA's SOAP API.
 
 =head1 VERSION
 
-Version 0.21
+Version 0.22
 
 =cut
 
-our $VERSION = '0.21';
+our $VERSION = '0.22';
 
 =head1 SYNOPSIS
 
@@ -942,10 +942,6 @@ sub _cast_filter_name_to_id {
 sub _cast_remote_field_values {
     my ($self, $arg) = @_;
     if (ref $arg && ref $arg eq 'HASH') {
-	# Convert some fields' values
-	foreach my $field (grep {exists $_converters{$_}} keys %$arg) {
-	    $_converters{$field}->($self, $arg, $field);
-	}
 	return [map {RemoteFieldValue->new($_, $arg->{$_})} keys %$arg];
     }
     return $arg;
