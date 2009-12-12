@@ -11,11 +11,11 @@ JIRA::Client - An extended interface to JIRA's SOAP API.
 
 =head1 VERSION
 
-Version 0.22
+Version 0.23
 
 =cut
 
-our $VERSION = '0.22';
+our $VERSION = '0.23';
 
 =head1 SYNOPSIS
 
@@ -188,6 +188,17 @@ sub _convert_resolution {
     return;
 }
 
+sub _convert_security_level {
+    my ($self, $seclevel) = @_;
+    if ($seclevel =~ /\D/) {
+        my $seclevels = $self->get_security_levels();
+        croak "There is no security level called '$seclevel'.\n"
+            unless exists $seclevels->{$seclevel};
+        $seclevel = $seclevels->{$seclevel}{id};
+    }
+    return $seclevel;
+}
+
 sub _convert_components {
     my ($self, $hash, $key, $project) = @_;
     my $comps = $hash->{components};
@@ -283,11 +294,11 @@ my %_converters = (
     type            => \&_convert_type,
 );
 
-=item B<create_issue> HASH_REF
+=item B<create_issue> HASH_REF [, SECURITYLEVEL]
 
 Creates a new issue given a hash containing the initial values for its
-fields. The hash must specify at least the fields C<project>,
-C<summary>, and C<type>.
+fields and, optionally, a security-level. The hash must specify at
+least the fields C<project>, C<summary>, and C<type>.
 
 This is an easier to use version of the createIssue API method. For
 once it accepts symbolic values for some of the issue fields that the
@@ -322,7 +333,7 @@ conversion the user needs administrator rights.
 
 sub create_issue
 {
-    my ($self, $hash) = @_;
+    my ($self, $hash, $seclevel) = @_;
     croak "create_issue requires an argument.\n"
         unless defined $hash;
     croak "create_issue's argument must be a HASH ref.\n"
@@ -342,7 +353,12 @@ sub create_issue
         $hash->{customFieldValues} = [map {RemoteCustomFieldValue->new($_, $cfs->{$_})} keys %$cfs];
     }
 
-    return $self->createIssue($hash);
+    if (defined $seclevel) {
+	return $self->createIssueWithSecurityLevel($hash, _convert_security_level($self, $seclevel));
+    }
+    else {
+	return $self->createIssue($hash);
+    }
 }
 
 =item B<update_issue> ISSUE_OR_KEY, HASH_REF
@@ -446,6 +462,19 @@ sub get_resolutions {
     my ($self) = @_;
     $self->{cache}{resolutions} ||= {map {$_->{name} => $_} @{$self->getResolutions()}};
     return $self->{cache}{resolutions};
+}
+
+=item B<get_security_levels>
+
+Returns a hash mapping a server's security level names to the
+RemoteSecurityLevel objects describing them.
+
+=cut
+
+sub get_security_levels {
+    my ($self) = @_;
+    $self->{cache}{seclevels} ||= {map {$_->{name} => $_} @{$self->getSecurityLevels()}};
+    return $self->{cache}{seclevels};
 }
 
 =item B<get_custom_fields>
@@ -774,6 +803,130 @@ sub get_issue_custom_field_values {
     return wantarray ? @values : \@values;
 }
 
+=item B<attach_files_to_issue> ISSUE, FILES...
+
+This method attaches one or more files to an issue. The ISSUE argument
+may be an issue key or a B<RemoteIssue> object. The attachments may be
+specified in two ways:
+
+=over 4
+
+=item STRING
+
+A string denotes a filename to be open and read. In this case, the
+attachment name is the file's basename.
+
+=item HASHREF
+
+When you want to specify a different name to the attachment or when
+you already have an IO object (a GLOB, a IO::File, or a FileHandle)
+you must pass them as values of a hash. The keys of the hash are taken
+as the attachment name. You can specify more than one attachment in
+each hash.
+
+=back
+
+The method retuns the value returned by the
+B<addBase64EncodedAttachmentsToIssue> API method.
+
+In the example below, we attach three files to the issue TST-1. The
+first is called C<file1.txt> and its contents are read from
+C</path/to/file1.txt>. The second is called C<text.txt> and its
+contents are read from C</path/to/file2.txt>. the third is called
+C<me.jpg> and its contents are read from the object refered to by
+C<$fh>.
+
+    $jira->attach_files_to_issue('TST-1',
+                                 '/path/to/file1.txt',
+                                 {
+                                     'text.txt' => '/path/to/file2.txt',
+                                     'me.jpg'   => $fh,
+                                 },
+    );
+
+=cut
+
+sub attach_files_to_issue {
+    my ($self, $issue, @files) = @_;
+
+    # First we process the @files specification. Filenames are pushed
+    # in @filenames and @attachments will end up with IO objects from
+    # which the file contents are going to be read later.
+
+    my (@filenames, @attachments);
+
+    for my $file (@files) {
+	if (not ref $file) {
+	    require File::Basename;
+	    push @filenames, File::Basename::basename($file);
+	    open my $fh, '<:raw', $file
+		or croak "Can't open $file: $!\n";
+	    push @attachments, $fh;
+	}
+	elsif (ref $file eq 'HASH') {
+	    while (my ($name, $contents) = each %$file) {
+		push @filenames, $name;
+		if (not ref $contents) {
+		    open my $fh, '<:raw', $contents
+			or croak "Can't open $contents: $!\n";
+		    push @attachments, $fh;
+		} elsif (ref($contents) =~ /^(?:GLOB|IO::File|FileHandle)$/) {
+		    push @attachments, $contents;
+		} else {
+		    croak "Invalid content specification for file $name.\n";
+		}
+	    }
+	}
+	else {
+	    croak "Files must be specified by STRINGs or HASHes, not by " . ref($file) . "s\n";
+	}
+    }
+
+    # Now we have to read all file contents and encode them to Base64.
+
+    require MIME::Base64;
+    for my $i (0 .. $#attachments) {
+	my $fh = $attachments[$i];
+	my $attachment = '';
+	my $chars_read;
+	while ($chars_read = read $fh, my $buf, 57*72) {
+	    $attachment .= MIME::Base64::encode_base64($buf);
+	}
+	defined $chars_read
+	    or croak "Error reading '$filenames[$i]': $!\n";
+	$attachments[$i] = $attachment;
+    }
+
+    return $self->addBase64EncodedAttachmentsToIssue($issue, \@filenames, \@attachments);
+}
+
+=item B<attach_strings_to_issue> ISSUE, HASHREF
+
+This method attaches one or more strings to an issue. The ISSUE
+argument may be an issue key or a B<RemoteIssue> object. The
+attachments are specified by a HASHREF in which the keys denote the
+file names and the values their contents.
+
+The method retuns the value returned by the
+B<addBase64EncodedAttachmentsToIssue> API method.
+
+=cut
+
+sub attach_strings_to_issue {
+    my ($self, $issue, $hash) = @_;
+
+    require MIME::Base64;
+
+    my (@filenames, @attachments);
+
+    while (my ($filename, $contents) = each %$hash) {
+	push @filenames,   $filename;
+	push @attachments, MIME::Base64::encode_base64($contents);
+    }
+
+    return $self->addBase64EncodedAttachmentsToIssue($issue, \@filenames, \@attachments);
+}
+
 =back
 
 =head1 OTHER CONSTRUCTORS
@@ -882,8 +1035,8 @@ package JIRA::Client;
 # zero-based, after the authentication token.
 
 my %typeof = (
-    addAttachmentsToIssue              	     => {0 => \&_cast_issue_key, 3 => 'base64Binary'},
-    addBase64EncodedAttachmentsToIssue 	     => {0 => \&_cast_issue_key},
+    addAttachmentsToIssue              	     => \&_cast_attachments,
+    addBase64EncodedAttachmentsToIssue 	     => \&_cast_base64encodedattachments,
     addComment                         	     => {0 => \&_cast_issue_key, 1 => \&_cast_remote_comment},
     addWorklogAndAutoAdjustRemainingEstimate => {0 => \&_cast_issue_key},
     addWorklogAndRetainRemainingEstimate     => {0 => \&_cast_issue_key},
@@ -947,6 +1100,35 @@ sub _cast_remote_field_values {
     return $arg;
 }
 
+sub _cast_attachments {
+    my ($self, $method, $args) = @_;
+    # The addAttachmentsToIssue method is deprecated and requires too
+    # much overhead to pass the file contents over the wire. Here we
+    # convert the arguments to call the newer
+    # addBase64EncodedAttachmentsToIssue method instead.
+    require MIME::Base64;
+    for my $content (@{$args->[2]}) {
+	$content = MIME::Base64::encode_base64($content);
+    }
+    $$method = 'addBase64EncodedAttachmentsToIssue';
+    _cast_base64encodedattachments($self, $method, $args);
+    return;
+}
+
+sub _cast_base64encodedattachments {
+    my ($self, $method, $args) = @_;
+    $args->[0] = _cast_issue_key($self, $args->[0]);
+    # We have to set the names of the arrays and of its elements
+    # because the default naming isn't properly understood by JIRA.
+    for my $i (1 .. 2) {
+	$args->[$i] = SOAP::Data->name(
+	    "array$i",
+	    [map {SOAP::Data->name("elem$i", $_)} @{$args->[$i]}],
+	);
+    }
+    return;
+}
+
 # All methods follow the same call convention, which makes it easy to
 # implement them all with an AUTOLOAD.
 
@@ -957,29 +1139,30 @@ sub AUTOLOAD {
 
     # Perform any non-default type coersion
     if (my $typeof = $typeof{$method}) {
-        while (my ($i, $type) = each %$typeof) {
-            if (ref $type) {
-		ref $type eq 'CODE'
-		    or croak "Invalid coersion spec to (", ref($type), ").\n";
-		$args[$i] = $type->($self, $args[$i]);
-            }
-            elsif (! ref $args[$i]) {
-                $args[$i] = SOAP::Data->type($type => $args[$i]);
-            }
-            elsif (ref $args[$i] eq 'ARRAY') {
-                foreach (@{$args[$i]}) {
-                    $_ = SOAP::Data->type($type => $_);
-                }
-            }
-            elsif (ref $args[$i] eq 'HASH') {
-                foreach (values %{$args[$i]}) {
-                    $_ = SOAP::Data->type($type => $_);
-                }
-            }
-            else {
-                croak "Can't coerse argument $i of method $AUTOLOAD.\n";
-            }
-        }
+	if (ref $typeof eq 'HASH') {
+	    while (my ($i, $type) = each %$typeof) {
+		if (ref $type) {
+		    ref $type eq 'CODE'
+			or croak "Invalid coersion spec to (", ref($type), ").\n";
+		    $args[$i] = $type->($self, $args[$i]);
+		} elsif (! ref $args[$i]) {
+		    $args[$i] = SOAP::Data->type($type => $args[$i]);
+		} elsif (ref $args[$i] eq 'ARRAY') {
+		    foreach (@{$args[$i]}) {
+			$_ = SOAP::Data->type($type => $_);
+		    }
+		} elsif (ref $args[$i] eq 'HASH') {
+		    foreach (values %{$args[$i]}) {
+			$_ = SOAP::Data->type($type => $_);
+		    }
+		} else {
+		    croak "Can't coerse argument $i of method $AUTOLOAD.\n";
+		}
+	    }
+	}
+	elsif (ref $typeof eq 'CODE') {
+	    $typeof->($self, \$method, \@args);
+	}
     }
 
     my $call = $self->{soap}->call($method, $self->{auth}, @args);
