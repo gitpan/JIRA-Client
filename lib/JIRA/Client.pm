@@ -11,11 +11,11 @@ JIRA::Client - An extended interface to JIRA's SOAP API.
 
 =head1 VERSION
 
-Version 0.23
+Version 0.24
 
 =cut
 
-our $VERSION = '0.23';
+our $VERSION = '0.24';
 
 =head1 SYNOPSIS
 
@@ -107,11 +107,6 @@ credentials that will be used to authenticate into JIRA.
 
 =cut
 
-sub _fault_details {
-    my $r = shift;
-    return join(', ', $r->faultcode(), $r->faultstring());
-}
-
 sub new {
     my ($class, $base_url, $user, $pass) = @_;
 
@@ -121,12 +116,12 @@ sub new {
     %{$soap->typelookup()} = (default => [0, sub {1}, 'as_string']);
 
     my $auth = $soap->login($user, $pass);
-    croak _fault_details($auth), "\n"
+    croak $auth->faultcode(), ', ', $auth->faultstring()
         if defined $auth->fault();
 
     my $self = {
         soap  => $soap,
-        auth  => scalar($auth->result()),
+        auth  => $auth->result(),
         iter  => undef,
         cache => {
             components => {}, # project_key => {name => RemoteComponent}
@@ -257,7 +252,7 @@ sub _convert_duedate {
 	$hash->{duedate} = join(
 	    '/',
 	    $day,
-	    qw/zero Jan Feb Mar Apr May Jun Jul Aug Sep Oct Nov Dez/[$month],
+	    qw/zero Jan Feb Mar Apr May Jun Jul Aug Sep Oct Nov Dec/[$month],
 	    substr($year, 2, 2),
 	);
     }
@@ -894,6 +889,8 @@ sub attach_files_to_issue {
 	}
 	defined $chars_read
 	    or croak "Error reading '$filenames[$i]': $!\n";
+	length $attachment
+	    or croak "Can't attach empty file '$filenames[$i]'\n";
 	$attachments[$i] = $attachment;
     }
 
@@ -1166,7 +1163,7 @@ sub AUTOLOAD {
     }
 
     my $call = $self->{soap}->call($method, $self->{auth}, @args);
-    croak _fault_details($call), "\n"
+    croak $call->faultcode(), ', ', $call->faultstring()
         if defined $call->fault();
     return $call->result();
 }
