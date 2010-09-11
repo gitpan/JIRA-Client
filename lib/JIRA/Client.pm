@@ -11,11 +11,11 @@ JIRA::Client - An extended interface to JIRA's SOAP API.
 
 =head1 VERSION
 
-Version 0.24
+Version 0.25
 
 =cut
 
-our $VERSION = '0.24';
+our $VERSION = '0.25';
 
 =head1 SYNOPSIS
 
@@ -178,7 +178,7 @@ sub _convert_resolution {
         my $resolutions = $self->get_resolutions();
         croak "There is no resolution called '$resolution'.\n"
             unless exists $resolutions->{$resolution};
-        $hash->{resolution} = $resolutions->{$resolution}{name};
+        $hash->{resolution} = $resolutions->{$resolution}{id};
     }
     return;
 }
@@ -431,6 +431,19 @@ sub get_issue_types {
     my ($self) = @_;
     $self->{cache}{issue_types} ||= {map {$_->{name} => $_} @{$self->getIssueTypes()}};
     return $self->{cache}{issue_types};
+}
+
+=item B<get_statuses>
+
+Returns a hash mapping the server's status names to the
+RemoteStatus objects describing them.
+
+=cut
+
+sub get_statuses {
+    my ($self) = @_;
+    $self->{cache}{statuses} ||= {map {$_->{name} => $_} @{$self->getStatuses()}};
+    return $self->{cache}{statuses};
 }
 
 =item B<get_priorities>
