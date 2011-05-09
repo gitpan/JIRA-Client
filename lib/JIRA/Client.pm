@@ -11,11 +11,11 @@ JIRA::Client - An extended interface to JIRA's SOAP API.
 
 =head1 VERSION
 
-Version 0.27
+Version 0.28
 
 =cut
 
-our $VERSION = '0.27';
+our $VERSION = '0.28';
 
 =head1 SYNOPSIS
 
@@ -98,19 +98,21 @@ distinguish them and we can avoid future name clashes.
 
 =over 4
 
-=item B<new> JIRAURL, USER, PASSWD
+=item B<new> JIRAURL, USER, PASSWD [, <SOAP::Lite arguments>]
 
-The JIRA::Client constructor needs three arguments. JIRAURL is JIRA's
-base URL from which will be constructed it's WSDL descriptor as
+The JIRA::Client constructor requires three arguments. JIRAURL is
+JIRA's base URL from which will be constructed it's WSDL descriptor as
 C<$JIRAURL/rpc/soap/jirasoapservice-v2?wsdl>. USER and PASSWD are the
-credentials that will be used to authenticate into JIRA.
+credentials that will be used to authenticate into JIRA. Any other
+arguments will be passed to the L<SOAP::Lite> object that will be
+created to talk to JIRA.
 
 =cut
 
 sub new {
-    my ($class, $base_url, $user, $pass) = @_;
+    my ($class, $base_url, $user, $pass, @args) = @_;
 
-    my $soap = SOAP::Lite->proxy("$base_url/rpc/soap/jirasoapservice-v2?wsdl");
+    my $soap = SOAP::Lite->proxy("$base_url/rpc/soap/jirasoapservice-v2?wsdl", @args);
 
     # Make all scalars be encoded as strings by default.
     %{$soap->typelookup()} = (default => [0, sub {1}, 'as_string']);
@@ -1295,7 +1297,7 @@ L<http://search.cpan.org/dist/JIRA-Client>
 
 =head1 COPYRIGHT & LICENSE
 
-Copyright 2009 CPqD, all rights reserved.
+Copyright 2009-2011 CPqD, all rights reserved.
 
 This program is free software; you can redistribute it and/or modify
 it under the same terms as Perl itself.
