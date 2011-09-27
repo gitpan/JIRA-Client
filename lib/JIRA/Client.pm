@@ -11,11 +11,11 @@ JIRA::Client - An extended interface to JIRA's SOAP API.
 
 =head1 VERSION
 
-Version 0.29
+Version 0.30
 
 =cut
 
-our $VERSION = '0.29';
+our $VERSION = '0.30';
 
 =head1 SYNOPSIS
 
@@ -35,7 +35,8 @@ our $VERSION = '0.29';
     }
   );
 
-  $issue = $jira->getIssue('TST-123');
+  $issue = eval { $jira->getIssue('TST-123') };
+  die "Can't getIssue(): $@" if $@;
 
   $jira->set_filter_iterator('my-filter');
   while (my $issue = $jira->next_issue()) {
@@ -63,6 +64,13 @@ JIRA::Client object interface. You must call them with the same name
 as documented in the specification but you should not pass the
 C<token> argument, because it is supplied transparently by the
 JIRA::Client object.
+
+All methods fail by throwing exceptions (croaking, actually). You may
+want to guard against this by invoking them within an eval block, like
+this:
+
+  my $issue = eval { $jira->getIssue('TST-123') };
+  die "Can't getIssue('TST-123'): $@" if $@;
 
 Some of the API methods require hard-to-build data structures as
 arguments. This module tries to make them easier to call by accepting
@@ -244,19 +252,15 @@ sub _convert_duedate {
     my ($self, $hash) = @_;
     my $duedate = $hash->{duedate};
     if (ref $duedate) {
+	return if ref $duedate eq 'SOAP::Data'; # already cast
 	croak "duedate fields must be set with DateTime references.\n"
 	    unless ref $duedate eq 'DateTime';
-	$hash->{duedate} = $duedate->strftime('%d/%B/%y');
+	$hash->{duedate} = SOAP::Data->type(date => $duedate->strftime('%F'));
     }
     elsif (my ($year, $month, $day) = ($duedate =~ /^(\d{4})-(\d{2})-(\d{2})/)) {
 	$month >= 1 and $month <= 12
-	    or croak "Invalid duedate ($hash->{duedate})";
-	$hash->{duedate} = join(
-	    '/',
-	    $day,
-	    qw/zero Jan Feb Mar Apr May Jun Jul Aug Sep Oct Nov Dec/[$month],
-	    substr($year, 2, 2),
-	);
+	    or croak "Invalid duedate ($hash->{duedate}).\n";
+	$hash->{duedate} = SOAP::Data->type(date => $duedate);
     }
     return;
 }
@@ -340,8 +344,12 @@ I<ids> instead of a list of C<RemoteComponent> objects.
 of version I<names> or I<ids> instead of a list of C<RemoteVersion>
 objects.
 
-=item C<duedate> can be specified in the ISO standard format
-(YYYY-MM-DD...) instead of the required format (d/MMM/yy).
+=item C<duedate> can be specified by a DateTime object or by a string
+in ISO standard format (YYYY-MM-DD...). (Note that up to JIRA 4.3 you
+could pass a string in the format "d/MMM/yy", which was passed as is
+to JIRA, which expected a B<string> SOAP type. However, since JIRA 4.4
+the server expects a B<date> SOAP type, which must be in the ISO
+standard format.)
 
 =back
 
