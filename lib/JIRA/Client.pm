@@ -11,11 +11,11 @@ JIRA::Client - An extended interface to JIRA's SOAP API.
 
 =head1 VERSION
 
-Version 0.30
+Version 0.31
 
 =cut
 
-our $VERSION = '0.30';
+our $VERSION = '0.31';
 
 =head1 SYNOPSIS
 
@@ -154,6 +154,16 @@ sub DESTROY {
 
     # shift->logout();
 }
+
+# The issue "https://jira.atlassian.com/browse/JRA-12300" explains why
+# some fields in JIRA have nonintuitive names. Here we map them.
+
+my %JRA12300 = (
+    affectsVersions => 'versions',
+    type            => 'issuetype',
+);
+
+my %JRA12300_backwards = reverse %JRA12300;
 
 # These are some helper functions to convert names into ids.
 
@@ -321,6 +331,11 @@ my %_converters = (
     type            => \&_convert_type,
 );
 
+# Accept both names for fields with duplicate names.
+foreach my $field (keys %JRA12300) {
+    $_converters{$JRA12300{$field}} = $_converters{$field};
+}
+
 =item B<create_issue> HASH_REF [, SECURITYLEVEL]
 
 Creates a new issue given a hash containing the initial values for its
@@ -472,11 +487,12 @@ sub update_issue
             $_ = $_->{id} foreach @$versions;
         }
     }
-    # Due to a bug in JIRA
-    # (http://jira.atlassian.com/browse/JRA-12300) we have to
-    # substitute 'versions' for the 'affectsVersions' key
-    if (my $versions = delete $params->{affectsVersions}) {
-        $params->{versions} = $versions;
+
+    # Due to a bug in JIRA we have to substitute the names of some fields.
+    foreach my $field (keys %JRA12300) {
+	if (my $value = delete $params->{$field}) {
+	    $params->{$JRA12300{$field}} = $value;
+	}
     }
 
     # Expand the custom_fields hash into the custom fields themselves.
@@ -791,9 +807,8 @@ sub progress_workflow_action_safely {
     # the action screen.
     my @fields = @{$self->getFieldsForAction($key, $action)};
     foreach my $id (map {$_->{id}} @fields) {
-        # This is due to a bug in JIRA
-        # http://jira.atlassian.com/browse/JRA-12300
-        $id = 'affectsVersions' if $id eq 'versions';
+        # Due to a bug in JIRA we have to substitute the names of some fields.
+	$id = $JRA12300_backwards{$id} if $JRA12300_backwards{$id};
 
         next if exists $params->{$id};
 
@@ -829,11 +844,12 @@ sub progress_workflow_action_safely {
             $_ = $_->{id} foreach @$versions;
         }
     }
-    # Due to a bug in JIRA
-    # (http://jira.atlassian.com/browse/JRA-12300) we have to
-    # substitute 'versions' for the 'affectsVersions' key
-    if (my $versions = delete $params->{affectsVersions}) {
-        $params->{versions} = $versions;
+
+    # Due to a bug in JIRA we have to substitute the names of some fields.
+    foreach my $field (keys %JRA12300) {
+	if (my $value = delete $params->{$field}) {
+	    $params->{$JRA12300{$field}} = $value;
+	}
     }
 
     # Expand the custom_fields hash into the custom fields themselves.
@@ -1040,9 +1056,8 @@ package RemoteFieldValue;
 sub new {
     my ($class, $id, $values) = @_;
 
-    # This is due to a bug in JIRA
-    # http://jira.atlassian.com/browse/JRA-12300
-    $id = 'versions' if $id eq 'affectsVersions';
+    # Due to a bug in JIRA we have to substitute the names of some fields.
+    $id = $JRA12300{$id} if exists $JRA12300{$id};
 
     $values = [$values] unless ref $values;
     return bless({id => $id, values => $values}, $class);
