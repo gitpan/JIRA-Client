@@ -11,11 +11,11 @@ JIRA::Client - An extended interface to JIRA's SOAP API.
 
 =head1 VERSION
 
-Version 0.32
+Version 0.33
 
 =cut
 
-our $VERSION = '0.32';
+our $VERSION = '0.33';
 
 =head1 SYNOPSIS
 
@@ -171,9 +171,12 @@ sub _convert_type {
     my ($self, $type) = @_;
     if ($type =~ /\D/) {
         my $types = $self->get_issue_types();
-        croak "There is no issue type called '$type'.\n"
-            unless exists $types->{$type};
-        return $types->{$type}{id};
+        return $types->{$type}{id} if exists $types->{$type};
+
+	$types = $self->get_subtask_issue_types();
+        return $types->{$type}{id} if exists $types->{$type};
+
+        croak "There is no issue type called '$type'.\n";
     }
     return $type;
 }
@@ -388,7 +391,7 @@ sub _flaten_components_and_versions {
     my ($params) = @_;
 
     # Flaten Component and Version fields
-    for my $field (grep {exists $params->{$_}} qw/components versions fixVersions/) {
+    for my $field (grep {exists $params->{$_}} qw/components affectsVersions fixVersions/) {
 	$params->{$field} = [map {$_->{id}} @{$params->{$field}}];
     }
 
@@ -558,6 +561,19 @@ sub get_issue_types {
     my ($self) = @_;
     $self->{cache}{issue_types} ||= {map {$_->{name} => $_} @{$self->getIssueTypes()}};
     return $self->{cache}{issue_types};
+}
+
+=item B<get_subtask_issue_types>
+
+Returns a hash mapping the server's sub-task issue type names to the
+RemoteIssueType objects describing them.
+
+=cut
+
+sub get_subtask_issue_types {
+    my ($self) = @_;
+    $self->{cache}{subtask_issue_types} ||= {map {$_->{name} => $_} @{$self->getSubTaskIssueTypes()}};
+    return $self->{cache}{subtask_issue_types};
 }
 
 =item B<get_statuses>
@@ -1409,7 +1425,7 @@ L<http://search.cpan.org/dist/JIRA-Client>
 
 =head1 COPYRIGHT & LICENSE
 
-Copyright 2009-2011 CPqD, all rights reserved.
+Copyright 2009-2012 CPqD, all rights reserved.
 
 This program is free software; you can redistribute it and/or modify
 it under the same terms as Perl itself.
