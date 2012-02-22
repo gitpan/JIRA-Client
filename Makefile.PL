@@ -1,41 +1,59 @@
+
 use strict;
 use warnings;
-use ExtUtils::MakeMaker qw(WriteMakefile prompt);
-use IO::Socket ();
-use Getopt::Long  qw(GetOptions);
 
-# clean up the online testing flag file.
-unlink("t/author.enabled");
 
-my $usage = "$0 [--author-tests=PASSWORD]\n";
-my $author_tests;
-GetOptions(
-    'author-tests=s' => \$author_tests,
-) or die $usage;
 
-if ($author_tests) {
-    # This relies on the author's personal test configuration. :-)
-    open my $enabled, '>', 't/author.enabled' or die "Can't touch ./t/author.enabled: $!";
-    print $enabled <<"EOS";
-{
-    url  => 'https://jira.atlassian.com/',
-    user => 'gnustavo',
-    pass => '$author_tests',
-};
-EOS
+use ExtUtils::MakeMaker 6.30;
+
+
+
+my %WriteMakefileArgs = (
+  "ABSTRACT" => "An extended interface to JIRA's SOAP API.",
+  "AUTHOR" => "Gustavo Chaves <gnustavo\@cpan.org>",
+  "BUILD_REQUIRES" => {
+    "English" => 0,
+    "Test::More" => 0
+  },
+  "CONFIGURE_REQUIRES" => {
+    "ExtUtils::MakeMaker" => "6.30"
+  },
+  "DISTNAME" => "JIRA-Client",
+  "EXE_FILES" => [],
+  "LICENSE" => "perl",
+  "NAME" => "JIRA::Client",
+  "PREREQ_PM" => {
+    "Carp" => 0,
+    "File::Basename" => 0,
+    "MIME::Base64" => 0,
+    "SOAP::Lite" => 0,
+    "strict" => 0,
+    "warnings" => 0
+  },
+  "VERSION" => "0.34",
+  "test" => {
+    "TESTS" => "t/*.t"
+  }
+);
+
+
+unless ( eval { ExtUtils::MakeMaker->VERSION(6.56) } ) {
+  my $br = delete $WriteMakefileArgs{BUILD_REQUIRES};
+  my $pp = $WriteMakefileArgs{PREREQ_PM};
+  for my $mod ( keys %$br ) {
+    if ( exists $pp->{$mod} ) {
+      $pp->{$mod} = $br->{$mod} if $br->{$mod} > $pp->{$mod};
+    }
+    else {
+      $pp->{$mod} = $br->{$mod};
+    }
+  }
 }
 
-WriteMakefile(
-    NAME                => 'JIRA::Client',
-    AUTHOR              => 'Gustavo Chaves <gnustavo@cpan.org>',
-    VERSION_FROM        => 'lib/JIRA/Client.pm',
-    ABSTRACT_FROM       => 'lib/JIRA/Client.pm',
-    PL_FILES            => {},
-    PREREQ_PM => {
-        'Test::More' => 0,
-	'IO::Socket' => 0,
-	'SOAP::Lite' => 0,
-    },
-    dist                => { COMPRESS => 'gzip -9f', SUFFIX => 'gz', },
-    clean               => { FILES => 'JIRA-Client-* t/*.enabled' },
-);
+delete $WriteMakefileArgs{CONFIGURE_REQUIRES}
+  unless eval { ExtUtils::MakeMaker->VERSION(6.52) };
+
+WriteMakefile(%WriteMakefileArgs);
+
+
+

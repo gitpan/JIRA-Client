@@ -3,22 +3,22 @@ abstract: "An extended interface to JIRA's SOAP API."
 author:
   - 'Gustavo Chaves <gnustavo@cpan.org>'
 build_requires:
-  ExtUtils::MakeMaker: 0
+  English: 0
+  Test::More: 0
 configure_requires:
-  ExtUtils::MakeMaker: 0
-dynamic_config: 1
-generated_by: 'ExtUtils::MakeMaker version 6.62, CPAN::Meta::Converter version 2.120351'
-license: unknown
+  ExtUtils::MakeMaker: 6.30
+dynamic_config: 0
+generated_by: 'Dist::Zilla version 4.300008, CPAN::Meta::Converter version 2.120351'
+license: perl
 meta-spec:
   url: http://module-build.sourceforge.net/META-spec-v1.4.html
   version: 1.4
 name: JIRA-Client
-no_index:
-  directory:
-    - t
-    - inc
 requires:
-  IO::Socket: 0
+  Carp: 0
+  File::Basename: 0
+  MIME::Base64: 0
   SOAP::Lite: 0
-  Test::More: 0
-version: 0.33
+  strict: 0
+  warnings: 0
+version: 0.34

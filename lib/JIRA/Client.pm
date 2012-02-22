@@ -1,121 +1,15 @@
-package JIRA::Client;
-
 use strict;
 use warnings;
+
+package JIRA::Client;
+{
+  $JIRA::Client::VERSION = '0.34'; # TRIAL
+}
+# ABSTRACT: An extended interface to JIRA's SOAP API.
+
 use Carp;
 use SOAP::Lite;
 
-=head1 NAME
-
-JIRA::Client - An extended interface to JIRA's SOAP API.
-
-=head1 VERSION
-
-Version 0.33
-
-=cut
-
-our $VERSION = '0.33';
-
-=head1 SYNOPSIS
-
-  use JIRA::Client;
-
-  my $jira = JIRA::Client->new('http://jira.example.com/jira', 'user', 'passwd');
-
-  my $issue = $jira->create_issue(
-    {
-      project => 'TST',
-      type => 'Bug',
-      summary => 'Summary of the bug',
-      assignee => 'gustavo',
-      components => ['compa', 'compb'],
-      fixVersions => ['1.0.1'],
-      custom_fields => {Language => 'Perl', Architecture => 'Linux'},
-    }
-  );
-
-  $issue = eval { $jira->getIssue('TST-123') };
-  die "Can't getIssue(): $@" if $@;
-
-  $jira->set_filter_iterator('my-filter');
-  while (my $issue = $jira->next_issue()) {
-      # ...
-  }
-
-=head1 DESCRIPTION
-
-JIRA is a proprietary bug tracking system from Atlassian
-(L<http://www.atlassian.com/software/jira/>).
-
-This module implements an Object Oriented wrapper around JIRA's SOAP
-API, which is specified in
-L<http://docs.atlassian.com/software/jira/docs/api/rpc-jira-plugin/latest/com/atlassian/jira/rpc/soap/JiraSoapService.html>.
-(This version is known work against JIRA 4.4.)
-
-Moreover, it implements some other methods to make it easier to do
-some common operations.
-
-=head1 API METHODS
-
-With the exception of the API C<login> and C<logout> methods, which
-aren't needed, all other methods are available through the
-JIRA::Client object interface. You must call them with the same name
-as documented in the specification but you should not pass the
-C<token> argument, because it is supplied transparently by the
-JIRA::Client object.
-
-All methods fail by throwing exceptions (croaking, actually). You may
-want to guard against this by invoking them within an eval block, like
-this:
-
-  my $issue = eval { $jira->getIssue('TST-123') };
-  die "Can't getIssue('TST-123'): $@" if $@;
-
-Some of the API methods require hard-to-build data structures as
-arguments. This module tries to make them easier to call by accepting
-simpler structures and implicitly constructing the more elaborated
-ones before making the actual SOAP call. Note that this is an option,
-i.e, you can either pass the elaborate structures by yourself or the
-simpler ones in the call.
-
-The items below are all the implemented implicit conversions. Wherever
-a parameter of the type specified first is required (as an rvalue, not
-as an lvalue) by an API method you can safely pass a value of the type
-specified second.
-
-=over 4
-
-=item A B<issue key> as a string can be specified by a B<RemoteIssue> object.
-
-=item A B<RemoteComment> object can be specified by a string.
-
-=item A B<filterId> as a string can be specified by a B<RemoteFilter> object.
-
-=item A B<RemoteFieldValue> object array can be specified by a hash mapping field names to values.
-
-=back
-
-=head1 EXTRA METHODS
-
-This module implements some extra methods to add useful functionality
-to the API. They are described below. Note that their names don't
-follow the CamelCase convention used by the native API methods but the
-more Perlish underscore_separated_words convention so that you can
-distinguish them and we can avoid future name clashes.
-
-=over 4
-
-=item B<new> JIRAURL, USER, PASSWD [, <SOAP::Lite arguments>]
-
-The JIRA::Client constructor requires three arguments. JIRAURL is
-JIRA's base URL from which will be constructed it's WSDL descriptor as
-C<$JIRAURL/rpc/soap/jirasoapservice-v2?wsdl>. USER and PASSWD are the
-credentials that will be used to authenticate into JIRA. Any other
-arguments will be passed to the L<SOAP::Lite> object that will be
-created to talk to JIRA.
-
-=cut
 
 sub new {
     my ($class, $base_url, $user, $pass, @args) = @_;
@@ -408,73 +302,6 @@ sub _flaten_components_and_versions {
     }
 }
 
-=item B<create_issue> HASH_REF [, SECURITYLEVEL]
-
-Creates a new issue given a hash containing the initial values for its
-fields and, optionally, a security-level. The hash must specify at
-least the fields C<project>, C<summary>, and C<type>.
-
-This is an easier to use version of the createIssue API method. For
-once it accepts symbolic values for some of the issue fields that the
-API method does not. Specifically:
-
-=over 4
-
-=item C<type> can be specified by I<name> instead of by I<id>.
-
-=item C<priority> can be specified by I<name> instead of by I<id>.
-
-=item C<component> can be specified by a list of component I<names> or
-I<ids> instead of a list of C<RemoteComponent> objects.
-
-=item C<affectsVersions> and C<fixVersions> can be specified by a list
-of version I<names> or I<ids> instead of a list of C<RemoteVersion>
-objects.
-
-=item C<duedate> can be specified by a DateTime object or by a string
-in ISO standard format (YYYY-MM-DD...). (Note that up to JIRA 4.3 you
-could pass a string in the format "d/MMM/yy", which was passed as is
-to JIRA, which expected a B<string> SOAP type. However, since JIRA 4.4
-the server expects a B<date> SOAP type, which must be in the ISO
-standard format.)
-
-=back
-
-It accepts a 'magic' field called B<parent>, which specifies the issue
-key from which the created issue must be a sub-task.
-
-It accepts another 'magic' field called B<custom_fields> to make it
-easy to set custom fields. It accepts a hash mapping each custom field
-to its value. The custom field can be specified by its id (in the
-format B<customfield_NNNNN>) or by its name, in which case the method
-will try to convert it to its id. Note that to do that conversion the
-user needs administrator rights.
-
-A simple custom field value can be specified by a scalar, which will
-be properly placed inside an ARRAY in order to satisfy the
-B<RemoteFieldValue>'s structure.
-
-Cascading select fields are properly specified like this:
-http://tinyurl.com/2bmthoa. The magic short-cut requires a HASH where
-each cascading level is indexed by its level number, starting at
-zero. So, instead of specifying it like this:
-
-    {
-        id => 'customfield_10011',
-        values => [ SOAP::Data->type(string => '10031' ) ]
-    },
-    {
-        id => 'customfield_10011:1',
-        values => [ SOAP::Data->type(string => '10188') ],
-    },
-
-You can do it like this:
-
-    {customfield_10011 => {'0' => 10031, '1' => 10188}},
-
-Note that the original hash keys and values are completely preserved.
-
-=cut
 
 sub create_issue
 {
@@ -510,17 +337,6 @@ sub create_issue
     }
 }
 
-=item B<update_issue> ISSUE_OR_KEY, HASH_REF
-
-Update a issue given a hash containing the values for its fields. The
-first argument may be an issue key or a RemoteIssue object. The second
-argument must be a hash-ref specifying the fields's values just like
-documented in the create_issue function above.
-
-This is an easier to use version of the updateIssue API method because
-it accepts the same shortcuts that create_issue does.
-
-=cut
 
 sub update_issue
 {
@@ -550,12 +366,6 @@ sub update_issue
     return $self->updateIssue($key, $params);
 }
 
-=item B<get_issue_types>
-
-Returns a hash mapping the server's issue type names to the
-RemoteIssueType objects describing them.
-
-=cut
 
 sub get_issue_types {
     my ($self) = @_;
@@ -563,12 +373,6 @@ sub get_issue_types {
     return $self->{cache}{issue_types};
 }
 
-=item B<get_subtask_issue_types>
-
-Returns a hash mapping the server's sub-task issue type names to the
-RemoteIssueType objects describing them.
-
-=cut
 
 sub get_subtask_issue_types {
     my ($self) = @_;
@@ -576,12 +380,6 @@ sub get_subtask_issue_types {
     return $self->{cache}{subtask_issue_types};
 }
 
-=item B<get_statuses>
-
-Returns a hash mapping the server's status names to the
-RemoteStatus objects describing them.
-
-=cut
 
 sub get_statuses {
     my ($self) = @_;
@@ -589,12 +387,6 @@ sub get_statuses {
     return $self->{cache}{statuses};
 }
 
-=item B<get_priorities>
-
-Returns a hash mapping a server's priorities names to the
-RemotePriority objects describing them.
-
-=cut
 
 sub get_priorities {
     my ($self) = @_;
@@ -602,12 +394,6 @@ sub get_priorities {
     return $self->{cache}{priorities};
 }
 
-=item B<get_resolutions>
-
-Returns a hash mapping a server's resolution names to the
-RemoteResolution objects describing them.
-
-=cut
 
 sub get_resolutions {
     my ($self) = @_;
@@ -615,12 +401,6 @@ sub get_resolutions {
     return $self->{cache}{resolutions};
 }
 
-=item B<get_security_levels> PROJECT-KEY
-
-Returns a hash mapping a project's security level names to the
-RemoteSecurityLevel objects describing them.
-
-=cut
 
 sub get_security_levels {
     my ($self, $project_key) = @_;
@@ -628,18 +408,6 @@ sub get_security_levels {
     return $self->{cache}{seclevels}{$project_key};
 }
 
-=item B<get_custom_fields>
-
-Returns a hash mapping JIRA's custom field names to the RemoteField
-representing them. It's useful since when you get a RemoteIssue object
-from this API it doesn't contain the custom field's names, but just
-their identifiers. From the RemoteField object you can obtain the
-field's B<id>, which is useful when calling the B<updateIssue> method.
-
-The method calls the getCustomFields API method the first time and
-keeps the custom fields information in a cache.
-
-=cut
 
 sub get_custom_fields {
     my ($self) = @_;
@@ -647,15 +415,6 @@ sub get_custom_fields {
     return $self->{cache}{custom_fields};
 }
 
-=item B<set_custom_fields> HASHREF
-
-Passes a hash mapping JIRA's custom field names to the RemoteField
-representing them to populate the custom field's cache. This can be
-useful if you don't have administrative privileges to the JIRA
-instance, since only administrators can call the B<getCustomFields>
-API method.
-
-=cut
 
 sub set_custom_fields {
     my ($self, $cfs) = @_;
@@ -663,12 +422,6 @@ sub set_custom_fields {
     return;
 }
 
-=item B<get_components> PROJECT_KEY
-
-Returns a hash mapping a project's components names to the
-RemoteComponent objects describing them.
-
-=cut
 
 sub get_components {
     my ($self, $project_key) = @_;
@@ -676,12 +429,6 @@ sub get_components {
     return $self->{cache}{components}{$project_key};
 }
 
-=item B<get_versions> PROJECT_KEY
-
-Returns a hash mapping a project's versions names to the RemoteVersion
-objects describing them.
-
-=cut
 
 sub get_versions {
     my ($self, $project_key) = @_;
@@ -689,12 +436,6 @@ sub get_versions {
     return $self->{cache}{versions}{$project_key};
 }
 
-=item B<get_favourite_filters>
-
-Returns a hash mapping the user's favourite filter names to its filter
-ids.
-
-=cut
 
 sub get_favourite_filters {
     my ($self) = @_;
@@ -702,19 +443,6 @@ sub get_favourite_filters {
     return $self->{cache}{filters};
 }
 
-=item B<set_filter_iterator> FILTER [, CACHE_SIZE]
-
-Sets up an iterator for the filter identified by FILTER. It must
-be called before calls to B<next_issue>.
-
-FILTER can be either a filter I<id> or a filter I<name>, in which case
-it's converted to a filter id with a call to C<getSavedFilters>.
-
-CACHE_SIZE defines the number of issues that will be pre-fetched by
-B<nect_issue> using C<getIssuesFromFilterWithLimit>. If not specified,
-a suitable default will be used.
-
-=cut
 
 sub set_filter_iterator {
     my ($self, $filter, $cache_size) = @_;
@@ -745,13 +473,6 @@ sub set_filter_iterator {
     return;
 }
 
-=item B<next_issue>
-
-This must be called after a call to B<set_filter_iterator>. Each call
-returns a reference to the next issue from the filter. When there are
-no more issues it returns undef.
-
-=cut
 
 sub next_issue {
     my ($self) = @_;
@@ -787,55 +508,6 @@ sub next_issue {
     return shift @{$iter->{issues}};
 }
 
-=item B<progress_workflow_action_safely> ISSUE, ACTION, PARAMS
-
-This is a safe and easier to use version of the
-B<progressWorkflowAction> API method which is used to progress an
-issue through a workflow's action while making edits to the fields
-that are shown in the action screen. The API method is dangerous
-because if you forget to provide new values to all the fields shown in
-the screen, then the fields not provided will become undefined in the
-issue. The problem has a pending issue on Atlassian's JIRA
-L<http://jira.atlassian.com/browse/JRA-8717>.
-
-This method plays it safe by making sure that all fields shown in the
-screen that already have a value are given new (or the same) values so
-that they don't get undefined. It calls the B<getFieldsForAction> API
-method to grok all fields that are shown in the screen. If there is
-any field not set in the ACTION_PARAMS then it calls B<getIssue> to
-grok the missing fields current values. As a result it constructs the
-necessary RemoteFieldAction array that must be passed to
-progressWorkflowAction.
-
-The method is also easier to use because its arguments are more
-flexible:
-
-=over 4
-
-=item C<ISSUE> can be either an issue key or a RemoteIssue object
-returned by a previous call to, e.g., C<getIssue>.
-
-=item C<ACTION> can be either an action I<id> or an action I<name>.
-
-=item C<PARAMS> must be a hash mapping field names to field
-values. This hash is treated in the same way as the hash passed to the
-function B<create_issue> above.
-
-=back
-
-For example, instead of using this:
-
-  my $action_id = somehow_grok_the_id_of('close');
-  $jira->progressWorkflowAction('PRJ-5', $action_id, [
-    RemoteFieldValue->new(2, 'new value'),
-    ..., # all fields must be specified here
-  ]);
-
-And risking to forget to pass some field you can do this:
-
-  $jira->progress_workflow_action_safely('PRJ-5', 'close', {2 => 'new value'});
-
-=cut
 
 sub progress_workflow_action_safely {
     my ($self, $issue, $action, $params) = @_;
@@ -890,16 +562,6 @@ sub progress_workflow_action_safely {
     return $self->progressWorkflowAction($key, $action, $params);
 }
 
-=item B<get_issue_custom_field_values> ISSUE, NAME_OR_IDs
-
-This method receives a RemoteField object and a list of names or ids
-of custom fields. It returns a list of references to the ARRAYs
-containing the values of the ISSUE's custom fields denoted by their
-NAME_OR_IDs. Returns undef for custom fields not set on the issue.
-
-In scalar context it returns a reference to the list.
-
-=cut
 
 sub get_issue_custom_field_values {
     my ($self, $issue, @cfs) = @_;
@@ -924,48 +586,6 @@ sub get_issue_custom_field_values {
     return wantarray ? @values : \@values;
 }
 
-=item B<attach_files_to_issue> ISSUE, FILES...
-
-This method attaches one or more files to an issue. The ISSUE argument
-may be an issue key or a B<RemoteIssue> object. The attachments may be
-specified in two ways:
-
-=over 4
-
-=item STRING
-
-A string denotes a filename to be open and read. In this case, the
-attachment name is the file's basename.
-
-=item HASHREF
-
-When you want to specify a different name to the attachment or when
-you already have an IO object (a GLOB, a IO::File, or a FileHandle)
-you must pass them as values of a hash. The keys of the hash are taken
-as the attachment name. You can specify more than one attachment in
-each hash.
-
-=back
-
-The method retuns the value returned by the
-B<addBase64EncodedAttachmentsToIssue> API method.
-
-In the example below, we attach three files to the issue TST-1. The
-first is called C<file1.txt> and its contents are read from
-C</path/to/file1.txt>. The second is called C<text.txt> and its
-contents are read from C</path/to/file2.txt>. the third is called
-C<me.jpg> and its contents are read from the object refered to by
-C<$fh>.
-
-    $jira->attach_files_to_issue('TST-1',
-                                 '/path/to/file1.txt',
-                                 {
-                                     'text.txt' => '/path/to/file2.txt',
-                                     'me.jpg'   => $fh,
-                                 },
-    );
-
-=cut
 
 sub attach_files_to_issue {
     my ($self, $issue, @files) = @_;
@@ -1023,17 +643,6 @@ sub attach_files_to_issue {
     return $self->addBase64EncodedAttachmentsToIssue($issue, \@filenames, \@attachments);
 }
 
-=item B<attach_strings_to_issue> ISSUE, HASHREF
-
-This method attaches one or more strings to an issue. The ISSUE
-argument may be an issue key or a B<RemoteIssue> object. The
-attachments are specified by a HASHREF in which the keys denote the
-file names and the values their contents.
-
-The method retuns the value returned by the
-B<addBase64EncodedAttachmentsToIssue> API method.
-
-=cut
 
 sub attach_strings_to_issue {
     my ($self, $issue, $hash) = @_;
@@ -1050,36 +659,11 @@ sub attach_strings_to_issue {
     return $self->addBase64EncodedAttachmentsToIssue($issue, \@filenames, \@attachments);
 }
 
-=back
-
-=head1 OTHER CONSTRUCTORS
-
-The JIRA SOAP API uses several types of objects (i.e., classes) for
-which the Perl SOAP interface does not provide the necessary
-constructors. This module implements some of them.
-
-=over 4
-
-=item B<RemoteFieldValue-E<gt>new> ID, VALUES
-
-The RemoteFieldValue object represents the value of a field of an
-issue. It needs two arguments:
-
-=over
-
-=item ID
-
-The field name, which must be a valid key for the ISSUE hash.
-
-=item VALUES
-
-A scalar or an array of scalars.
-
-=back
-
-=cut
 
 package RemoteFieldValue;
+{
+  $RemoteFieldValue::VERSION = '0.34'; # TRIAL
+}
 
 sub new {
     my ($class, $id, $values) = @_;
@@ -1091,26 +675,11 @@ sub new {
     return bless({id => $id, values => $values}, $class);
 }
 
-=item B<RemoteCustomFieldValue-E<gt>new> ID, VALUES
-
-The RemoteCustomFieldValue object represents the value of a
-custom_field of an issue. It needs two arguments:
-
-=over
-
-=item ID
-
-The field name, which must be a valid custom_field key.
-
-=item VALUES
-
-A scalar or an array of scalars.
-
-=back
-
-=cut
 
 package RemoteCustomFieldValue;
+{
+  $RemoteCustomFieldValue::VERSION = '0.34'; # TRIAL
+}
 
 sub new {
     my ($class, $id, $values) = @_;
@@ -1119,11 +688,11 @@ sub new {
     return bless({customfieldId => $id, key => undef, values => $values} => $class);
 }
 
-=item B<RemoteComponent-E<gt>new> ID, NAME
-
-=cut
 
 package RemoteComponent;
+{
+  $RemoteComponent::VERSION = '0.34'; # TRIAL
+}
 
 sub new {
     my ($class, $id, $name) = @_;
@@ -1132,11 +701,11 @@ sub new {
     return $o;
 }
 
-=item B<RemoteVersion-E<gt>new> ID, NAME
-
-=cut
 
 package RemoteVersion;
+{
+  $RemoteVersion::VERSION = '0.34'; # TRIAL
+}
 
 sub new {
     my ($class, $id, $name) = @_;
@@ -1144,10 +713,6 @@ sub new {
     $o->{name} = $name if $name;
     return $o;
 }
-
-=back
-
-=cut
 
 package JIRA::Client;
 
@@ -1378,6 +943,428 @@ sub AUTOLOAD {
     return $call->result();
 }
 
+
+1; # End of JIRA::Client
+
+__END__
+=pod
+
+=head1 NAME
+
+JIRA::Client - An extended interface to JIRA's SOAP API.
+
+=head1 VERSION
+
+version 0.34
+
+=head1 SYNOPSIS
+
+  use JIRA::Client;
+
+  my $jira = JIRA::Client->new('http://jira.example.com/jira', 'user', 'passwd');
+
+  my $issue = $jira->create_issue(
+    {
+      project => 'TST',
+      type => 'Bug',
+      summary => 'Summary of the bug',
+      assignee => 'gustavo',
+      components => ['compa', 'compb'],
+      fixVersions => ['1.0.1'],
+      custom_fields => {Language => 'Perl', Architecture => 'Linux'},
+    }
+  );
+
+  $issue = eval { $jira->getIssue('TST-123') };
+  die "Can't getIssue(): $@" if $@;
+
+  $jira->set_filter_iterator('my-filter');
+  while (my $issue = $jira->next_issue()) {
+      # ...
+  }
+
+=head1 DESCRIPTION
+
+JIRA is a proprietary bug tracking system from Atlassian
+(L<http://www.atlassian.com/software/jira/>).
+
+This module implements an Object Oriented wrapper around JIRA's SOAP
+API, which is specified in
+L<http://docs.atlassian.com/software/jira/docs/api/rpc-jira-plugin/latest/com/atlassian/jira/rpc/soap/JiraSoapService.html>.
+(This version is known work against JIRA 4.4.)
+
+Moreover, it implements some other methods to make it easier to do
+some common operations.
+
+=head1 METHODS
+
+=head2 B<new> JIRAURL, USER, PASSWD [, <SOAP::Lite arguments>]
+
+The JIRA::Client constructor requires three arguments. JIRAURL is
+JIRA's base URL from which will be constructed it's WSDL descriptor as
+C<$JIRAURL/rpc/soap/jirasoapservice-v2?wsdl>. USER and PASSWD are the
+credentials that will be used to authenticate into JIRA. Any other
+arguments will be passed to the L<SOAP::Lite> object that will be
+created to talk to JIRA.
+
+=head2 B<create_issue> HASH_REF [, SECURITYLEVEL]
+
+Creates a new issue given a hash containing the initial values for its
+fields and, optionally, a security-level. The hash must specify at
+least the fields C<project>, C<summary>, and C<type>.
+
+This is an easier to use version of the createIssue API method. For
+once it accepts symbolic values for some of the issue fields that the
+API method does not. Specifically:
+
+=over 4
+
+=item C<type> can be specified by I<name> instead of by I<id>.
+
+=item C<priority> can be specified by I<name> instead of by I<id>.
+
+=item C<component> can be specified by a list of component I<names> or
+I<ids> instead of a list of C<RemoteComponent> objects.
+
+=item C<affectsVersions> and C<fixVersions> can be specified by a list
+of version I<names> or I<ids> instead of a list of C<RemoteVersion>
+objects.
+
+=item C<duedate> can be specified by a DateTime object or by a string
+in ISO standard format (YYYY-MM-DD...). (Note that up to JIRA 4.3 you
+could pass a string in the format "d/MMM/yy", which was passed as is
+to JIRA, which expected a B<string> SOAP type. However, since JIRA 4.4
+the server expects a B<date> SOAP type, which must be in the ISO
+standard format.)
+
+=back
+
+It accepts a 'magic' field called B<parent>, which specifies the issue
+key from which the created issue must be a sub-task.
+
+It accepts another 'magic' field called B<custom_fields> to make it
+easy to set custom fields. It accepts a hash mapping each custom field
+to its value. The custom field can be specified by its id (in the
+format B<customfield_NNNNN>) or by its name, in which case the method
+will try to convert it to its id. Note that to do that conversion the
+user needs administrator rights.
+
+A simple custom field value can be specified by a scalar, which will
+be properly placed inside an ARRAY in order to satisfy the
+B<RemoteFieldValue>'s structure.
+
+Cascading select fields are properly specified like this:
+http://tinyurl.com/2bmthoa. The magic short-cut requires a HASH where
+each cascading level is indexed by its level number, starting at
+zero. So, instead of specifying it like this:
+
+    {
+        id => 'customfield_10011',
+        values => [ SOAP::Data->type(string => '10031' ) ]
+    },
+    {
+        id => 'customfield_10011:1',
+        values => [ SOAP::Data->type(string => '10188') ],
+    },
+
+You can do it like this:
+
+    {customfield_10011 => {'0' => 10031, '1' => 10188}},
+
+Note that the original hash keys and values are completely preserved.
+
+=head2 B<update_issue> ISSUE_OR_KEY, HASH_REF
+
+Update a issue given a hash containing the values for its fields. The
+first argument may be an issue key or a RemoteIssue object. The second
+argument must be a hash-ref specifying the fields's values just like
+documented in the create_issue function above.
+
+This is an easier to use version of the updateIssue API method because
+it accepts the same shortcuts that create_issue does.
+
+=head2 B<get_issue_types>
+
+Returns a hash mapping the server's issue type names to the
+RemoteIssueType objects describing them.
+
+=head2 B<get_subtask_issue_types>
+
+Returns a hash mapping the server's sub-task issue type names to the
+RemoteIssueType objects describing them.
+
+=head2 B<get_statuses>
+
+Returns a hash mapping the server's status names to the
+RemoteStatus objects describing them.
+
+=head2 B<get_priorities>
+
+Returns a hash mapping a server's priorities names to the
+RemotePriority objects describing them.
+
+=head2 B<get_resolutions>
+
+Returns a hash mapping a server's resolution names to the
+RemoteResolution objects describing them.
+
+=head2 B<get_security_levels> PROJECT-KEY
+
+Returns a hash mapping a project's security level names to the
+RemoteSecurityLevel objects describing them.
+
+=head2 B<get_custom_fields>
+
+Returns a hash mapping JIRA's custom field names to the RemoteField
+representing them. It's useful since when you get a RemoteIssue object
+from this API it doesn't contain the custom field's names, but just
+their identifiers. From the RemoteField object you can obtain the
+field's B<id>, which is useful when calling the B<updateIssue> method.
+
+The method calls the getCustomFields API method the first time and
+keeps the custom fields information in a cache.
+
+=head2 B<set_custom_fields> HASHREF
+
+Passes a hash mapping JIRA's custom field names to the RemoteField
+representing them to populate the custom field's cache. This can be
+useful if you don't have administrative privileges to the JIRA
+instance, since only administrators can call the B<getCustomFields>
+API method.
+
+=head2 B<get_components> PROJECT_KEY
+
+Returns a hash mapping a project's components names to the
+RemoteComponent objects describing them.
+
+=head2 B<get_versions> PROJECT_KEY
+
+Returns a hash mapping a project's versions names to the RemoteVersion
+objects describing them.
+
+=head2 B<get_favourite_filters>
+
+Returns a hash mapping the user's favourite filter names to its filter
+ids.
+
+=head2 B<set_filter_iterator> FILTER [, CACHE_SIZE]
+
+Sets up an iterator for the filter identified by FILTER. It must
+be called before calls to B<next_issue>.
+
+FILTER can be either a filter I<id> or a filter I<name>, in which case
+it's converted to a filter id with a call to C<getSavedFilters>.
+
+CACHE_SIZE defines the number of issues that will be pre-fetched by
+B<nect_issue> using C<getIssuesFromFilterWithLimit>. If not specified,
+a suitable default will be used.
+
+=head2 B<next_issue>
+
+This must be called after a call to B<set_filter_iterator>. Each call
+returns a reference to the next issue from the filter. When there are
+no more issues it returns undef.
+
+=head2 B<progress_workflow_action_safely> ISSUE, ACTION, PARAMS
+
+This is a safe and easier to use version of the
+B<progressWorkflowAction> API method which is used to progress an
+issue through a workflow's action while making edits to the fields
+that are shown in the action screen. The API method is dangerous
+because if you forget to provide new values to all the fields shown in
+the screen, then the fields not provided will become undefined in the
+issue. The problem has a pending issue on Atlassian's JIRA
+L<http://jira.atlassian.com/browse/JRA-8717>.
+
+This method plays it safe by making sure that all fields shown in the
+screen that already have a value are given new (or the same) values so
+that they don't get undefined. It calls the B<getFieldsForAction> API
+method to grok all fields that are shown in the screen. If there is
+any field not set in the ACTION_PARAMS then it calls B<getIssue> to
+grok the missing fields current values. As a result it constructs the
+necessary RemoteFieldAction array that must be passed to
+progressWorkflowAction.
+
+The method is also easier to use because its arguments are more
+flexible:
+
+=over 4
+
+=item C<ISSUE> can be either an issue key or a RemoteIssue object
+returned by a previous call to, e.g., C<getIssue>.
+
+=item C<ACTION> can be either an action I<id> or an action I<name>.
+
+=item C<PARAMS> must be a hash mapping field names to field
+values. This hash is treated in the same way as the hash passed to the
+function B<create_issue> above.
+
+=back
+
+For example, instead of using this:
+
+  my $action_id = somehow_grok_the_id_of('close');
+  $jira->progressWorkflowAction('PRJ-5', $action_id, [
+    RemoteFieldValue->new(2, 'new value'),
+    ..., # all fields must be specified here
+  ]);
+
+And risking to forget to pass some field you can do this:
+
+  $jira->progress_workflow_action_safely('PRJ-5', 'close', {2 => 'new value'});
+
+=head2 B<get_issue_custom_field_values> ISSUE, NAME_OR_IDs
+
+This method receives a RemoteField object and a list of names or ids
+of custom fields. It returns a list of references to the ARRAYs
+containing the values of the ISSUE's custom fields denoted by their
+NAME_OR_IDs. Returns undef for custom fields not set on the issue.
+
+In scalar context it returns a reference to the list.
+
+=head2 B<attach_files_to_issue> ISSUE, FILES...
+
+This method attaches one or more files to an issue. The ISSUE argument
+may be an issue key or a B<RemoteIssue> object. The attachments may be
+specified in two ways:
+
+=over 4
+
+=item STRING
+
+A string denotes a filename to be open and read. In this case, the
+attachment name is the file's basename.
+
+=item HASHREF
+
+When you want to specify a different name to the attachment or when
+you already have an IO object (a GLOB, a IO::File, or a FileHandle)
+you must pass them as values of a hash. The keys of the hash are taken
+as the attachment name. You can specify more than one attachment in
+each hash.
+
+=back
+
+The method retuns the value returned by the
+B<addBase64EncodedAttachmentsToIssue> API method.
+
+In the example below, we attach three files to the issue TST-1. The
+first is called C<file1.txt> and its contents are read from
+C</path/to/file1.txt>. The second is called C<text.txt> and its
+contents are read from C</path/to/file2.txt>. the third is called
+C<me.jpg> and its contents are read from the object refered to by
+C<$fh>.
+
+    $jira->attach_files_to_issue('TST-1',
+                                 '/path/to/file1.txt',
+                                 {
+                                     'text.txt' => '/path/to/file2.txt',
+                                     'me.jpg'   => $fh,
+                                 },
+    );
+
+=head2 B<attach_strings_to_issue> ISSUE, HASHREF
+
+This method attaches one or more strings to an issue. The ISSUE
+argument may be an issue key or a B<RemoteIssue> object. The
+attachments are specified by a HASHREF in which the keys denote the
+file names and the values their contents.
+
+The method retuns the value returned by the
+B<addBase64EncodedAttachmentsToIssue> API method.
+
+=head2 B<RemoteFieldValue-E<gt>new> ID, VALUES
+
+The RemoteFieldValue object represents the value of a field of an
+issue. It needs two arguments:
+
+=over
+
+=item ID
+
+The field name, which must be a valid key for the ISSUE hash.
+
+=item VALUES
+
+A scalar or an array of scalars.
+
+=back
+
+=head2 B<RemoteCustomFieldValue-E<gt>new> ID, VALUES
+
+The RemoteCustomFieldValue object represents the value of a
+custom_field of an issue. It needs two arguments:
+
+=over
+
+=item ID
+
+The field name, which must be a valid custom_field key.
+
+=item VALUES
+
+A scalar or an array of scalars.
+
+=back
+
+=head2 B<RemoteComponent-E<gt>new> ID, NAME
+
+=head2 B<RemoteVersion-E<gt>new> ID, NAME
+
+=head1 API METHODS
+
+With the exception of the API C<login> and C<logout> methods, which
+aren't needed, all other methods are available through the
+JIRA::Client object interface. You must call them with the same name
+as documented in the specification but you should not pass the
+C<token> argument, because it is supplied transparently by the
+JIRA::Client object.
+
+All methods fail by throwing exceptions (croaking, actually). You may
+want to guard against this by invoking them within an eval block, like
+this:
+
+  my $issue = eval { $jira->getIssue('TST-123') };
+  die "Can't getIssue('TST-123'): $@" if $@;
+
+Some of the API methods require hard-to-build data structures as
+arguments. This module tries to make them easier to call by accepting
+simpler structures and implicitly constructing the more elaborated
+ones before making the actual SOAP call. Note that this is an option,
+i.e, you can either pass the elaborate structures by yourself or the
+simpler ones in the call.
+
+The items below are all the implemented implicit conversions. Wherever
+a parameter of the type specified first is required (as an rvalue, not
+as an lvalue) by an API method you can safely pass a value of the type
+specified second.
+
+=over 4
+
+=item A B<issue key> as a string can be specified by a B<RemoteIssue> object.
+
+=item A B<RemoteComment> object can be specified by a string.
+
+=item A B<filterId> as a string can be specified by a B<RemoteFilter> object.
+
+=item A B<RemoteFieldValue> object array can be specified by a hash mapping field names to values.
+
+=back
+
+=head1 EXTRA METHODS
+
+This module implements some extra methods to add useful functionality
+to the API. They are described below. Note that their names don't
+follow the CamelCase convention used by the native API methods but the
+more Perlish underscore_separated_words convention so that you can
+distinguish them and we can avoid future name clashes.
+
+=head1 OTHER CONSTRUCTORS
+
+The JIRA SOAP API uses several types of objects (i.e., classes) for
+which the Perl SOAP interface does not provide the necessary
+constructors. This module implements some of them.
+
 =head1 EXAMPLES
 
 Please, see the examples under the C<examples> directory in the module
@@ -1385,51 +1372,14 @@ distribution.
 
 =head1 AUTHOR
 
-Gustavo Chaves, C<< <gnustavo@cpan.org> >>
+Gustavo Chaves <gnustavo@cpan.org>
 
-=head1 BUGS
+=head1 COPYRIGHT AND LICENSE
 
-Please report any bugs or feature requests to C<bug-jira-client at
-rt.cpan.org>, or through the web interface at
-L<http://rt.cpan.org/NoAuth/ReportBug.html?Queue=JIRA-Client>.  I will
-be notified, and then you'll automatically be notified of progress on
-your bug as I make changes.
+This software is copyright (c) 2012 by CPqD.
 
-=head1 SUPPORT
-
-You can find documentation for this module with the perldoc command.
-
-    perldoc JIRA::Client
-
-You can also look for information at:
-
-=over 4
-
-=item * RT: CPAN's request tracker
-
-L<http://rt.cpan.org/NoAuth/Bugs.html?Dist=JIRA-Client>
-
-=item * AnnoCPAN: Annotated CPAN documentation
-
-L<http://annocpan.org/dist/JIRA-Client>
-
-=item * CPAN Ratings
-
-L<http://cpanratings.perl.org/d/JIRA-Client>
-
-=item * Search CPAN
-
-L<http://search.cpan.org/dist/JIRA-Client>
-
-=back
-
-=head1 COPYRIGHT & LICENSE
-
-Copyright 2009-2012 CPqD, all rights reserved.
-
-This program is free software; you can redistribute it and/or modify
-it under the same terms as Perl itself.
+This is free software; you can redistribute it and/or modify it under
+the same terms as the Perl 5 programming language system itself.
 
 =cut
 
-1; # End of JIRA::Client
