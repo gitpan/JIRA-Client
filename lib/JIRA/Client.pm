@@ -3,7 +3,7 @@ use warnings;
 
 package JIRA::Client;
 {
-  $JIRA::Client::VERSION = '0.34'; # TRIAL
+  $JIRA::Client::VERSION = '0.34';
 }
 # ABSTRACT: An extended interface to JIRA's SOAP API.
 
@@ -662,7 +662,7 @@ sub attach_strings_to_issue {
 
 package RemoteFieldValue;
 {
-  $RemoteFieldValue::VERSION = '0.34'; # TRIAL
+  $RemoteFieldValue::VERSION = '0.34';
 }
 
 sub new {
@@ -678,7 +678,7 @@ sub new {
 
 package RemoteCustomFieldValue;
 {
-  $RemoteCustomFieldValue::VERSION = '0.34'; # TRIAL
+  $RemoteCustomFieldValue::VERSION = '0.34';
 }
 
 sub new {
@@ -691,7 +691,7 @@ sub new {
 
 package RemoteComponent;
 {
-  $RemoteComponent::VERSION = '0.34'; # TRIAL
+  $RemoteComponent::VERSION = '0.34';
 }
 
 sub new {
@@ -704,7 +704,7 @@ sub new {
 
 package RemoteVersion;
 {
-  $RemoteVersion::VERSION = '0.34'; # TRIAL
+  $RemoteVersion::VERSION = '0.34';
 }
 
 sub new {
