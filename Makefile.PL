@@ -10,7 +10,7 @@ use ExtUtils::MakeMaker 6.30;
 
 my %WriteMakefileArgs = (
   "ABSTRACT" => "An extended interface to JIRA's SOAP API.",
-  "AUTHOR" => "Gustavo Chaves <gnustavo\@cpan.org>",
+  "AUTHOR" => "Gustavo L. de M. Chaves <gnustavo\@cpan.org>",
   "BUILD_REQUIRES" => {
     "English" => 0,
     "Test::More" => 0
@@ -30,7 +30,7 @@ my %WriteMakefileArgs = (
     "strict" => 0,
     "warnings" => 0
   },
-  "VERSION" => "0.34",
+  "VERSION" => "0.35",
   "test" => {
     "TESTS" => "t/*.t"
   }

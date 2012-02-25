@@ -1,14 +1,14 @@
 ---
 abstract: "An extended interface to JIRA's SOAP API."
 author:
-  - 'Gustavo Chaves <gnustavo@cpan.org>'
+  - 'Gustavo L. de M. Chaves <gnustavo@cpan.org>'
 build_requires:
   English: 0
   Test::More: 0
 configure_requires:
   ExtUtils::MakeMaker: 6.30
 dynamic_config: 0
-generated_by: 'Dist::Zilla version 4.300008, CPAN::Meta::Converter version 2.120351'
+generated_by: 'Dist::Zilla version 4.300009, CPAN::Meta::Converter version 2.120351'
 license: perl
 meta-spec:
   url: http://module-build.sourceforge.net/META-spec-v1.4.html
@@ -21,4 +21,4 @@ requires:
   SOAP::Lite: 0
   strict: 0
   warnings: 0
-version: 0.34
+version: 0.35

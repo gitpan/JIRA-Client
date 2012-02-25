@@ -3,7 +3,7 @@ use warnings;
 
 package JIRA::Client;
 {
-  $JIRA::Client::VERSION = '0.34';
+  $JIRA::Client::VERSION = '0.35'; # TRIAL
 }
 # ABSTRACT: An extended interface to JIRA's SOAP API.
 
@@ -662,7 +662,7 @@ sub attach_strings_to_issue {
 
 package RemoteFieldValue;
 {
-  $RemoteFieldValue::VERSION = '0.34';
+  $RemoteFieldValue::VERSION = '0.35'; # TRIAL
 }
 
 sub new {
@@ -678,7 +678,7 @@ sub new {
 
 package RemoteCustomFieldValue;
 {
-  $RemoteCustomFieldValue::VERSION = '0.34';
+  $RemoteCustomFieldValue::VERSION = '0.35'; # TRIAL
 }
 
 sub new {
@@ -691,7 +691,7 @@ sub new {
 
 package RemoteComponent;
 {
-  $RemoteComponent::VERSION = '0.34';
+  $RemoteComponent::VERSION = '0.35'; # TRIAL
 }
 
 sub new {
@@ -704,7 +704,7 @@ sub new {
 
 package RemoteVersion;
 {
-  $RemoteVersion::VERSION = '0.34';
+  $RemoteVersion::VERSION = '0.35'; # TRIAL
 }
 
 sub new {
@@ -955,7 +955,7 @@ JIRA::Client - An extended interface to JIRA's SOAP API.
 
 =head1 VERSION
 
-version 0.34
+version 0.35
 
 =head1 SYNOPSIS
 
@@ -995,6 +995,54 @@ L<http://docs.atlassian.com/software/jira/docs/api/rpc-jira-plugin/latest/com/at
 
 Moreover, it implements some other methods to make it easier to do
 some common operations.
+
+=head2 API METHODS
+
+With the exception of the API C<login> and C<logout> methods, which
+aren't needed, all other methods are available through the
+JIRA::Client object interface. You must call them with the same name
+as documented in the specification but you should not pass the
+C<token> argument, because it is supplied transparently by the
+JIRA::Client object.
+
+All methods fail by throwing exceptions (croaking, actually). You may
+want to guard against this by invoking them within an eval block, like
+this:
+
+  my $issue = eval { $jira->getIssue('TST-123') };
+  die "Can't getIssue('TST-123'): $@" if $@;
+
+Some of the API methods require hard-to-build data structures as
+arguments. This module tries to make them easier to call by accepting
+simpler structures and implicitly constructing the more elaborated
+ones before making the actual SOAP call. Note that this is an option,
+i.e, you can either pass the elaborate structures by yourself or the
+simpler ones in the call.
+
+The items below are all the implemented implicit conversions. Wherever
+a parameter of the type specified first is required (as an rvalue, not
+as an lvalue) by an API method you can safely pass a value of the type
+specified second.
+
+=over 4
+
+=item A B<issue key> as a string can be specified by a B<RemoteIssue> object.
+
+=item A B<RemoteComment> object can be specified by a string.
+
+=item A B<filterId> as a string can be specified by a B<RemoteFilter> object.
+
+=item A B<RemoteFieldValue> object array can be specified by a hash mapping field names to values.
+
+=back
+
+=head2 EXTRA METHODS
+
+This module implements some extra methods to add useful functionality
+to the API. They are described below. Note that their names don't
+follow the CamelCase convention used by the native API methods but the
+more Perlish underscore_separated_words convention so that you can
+distinguish them and we can avoid future name clashes.
 
 =head1 METHODS
 
@@ -1311,54 +1359,6 @@ A scalar or an array of scalars.
 
 =head2 B<RemoteVersion-E<gt>new> ID, NAME
 
-=head1 API METHODS
-
-With the exception of the API C<login> and C<logout> methods, which
-aren't needed, all other methods are available through the
-JIRA::Client object interface. You must call them with the same name
-as documented in the specification but you should not pass the
-C<token> argument, because it is supplied transparently by the
-JIRA::Client object.
-
-All methods fail by throwing exceptions (croaking, actually). You may
-want to guard against this by invoking them within an eval block, like
-this:
-
-  my $issue = eval { $jira->getIssue('TST-123') };
-  die "Can't getIssue('TST-123'): $@" if $@;
-
-Some of the API methods require hard-to-build data structures as
-arguments. This module tries to make them easier to call by accepting
-simpler structures and implicitly constructing the more elaborated
-ones before making the actual SOAP call. Note that this is an option,
-i.e, you can either pass the elaborate structures by yourself or the
-simpler ones in the call.
-
-The items below are all the implemented implicit conversions. Wherever
-a parameter of the type specified first is required (as an rvalue, not
-as an lvalue) by an API method you can safely pass a value of the type
-specified second.
-
-=over 4
-
-=item A B<issue key> as a string can be specified by a B<RemoteIssue> object.
-
-=item A B<RemoteComment> object can be specified by a string.
-
-=item A B<filterId> as a string can be specified by a B<RemoteFilter> object.
-
-=item A B<RemoteFieldValue> object array can be specified by a hash mapping field names to values.
-
-=back
-
-=head1 EXTRA METHODS
-
-This module implements some extra methods to add useful functionality
-to the API. They are described below. Note that their names don't
-follow the CamelCase convention used by the native API methods but the
-more Perlish underscore_separated_words convention so that you can
-distinguish them and we can avoid future name clashes.
-
 =head1 OTHER CONSTRUCTORS
 
 The JIRA SOAP API uses several types of objects (i.e., classes) for
@@ -1372,7 +1372,7 @@ distribution.
 
 =head1 AUTHOR
 
-Gustavo Chaves <gnustavo@cpan.org>
+Gustavo L. de M. Chaves <gnustavo@cpan.org>
 
 =head1 COPYRIGHT AND LICENSE
 
