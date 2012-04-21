@@ -3,7 +3,7 @@ use warnings;
 
 package JIRA::Client;
 {
-  $JIRA::Client::VERSION = '0.35';
+  $JIRA::Client::VERSION = '0.36';
 }
 # ABSTRACT: An extended interface to JIRA's SOAP API.
 
@@ -689,7 +689,7 @@ sub filter_issues {
 
 package RemoteFieldValue;
 {
-  $RemoteFieldValue::VERSION = '0.35';
+  $RemoteFieldValue::VERSION = '0.36';
 }
 
 sub new {
@@ -705,7 +705,7 @@ sub new {
 
 package RemoteCustomFieldValue;
 {
-  $RemoteCustomFieldValue::VERSION = '0.35';
+  $RemoteCustomFieldValue::VERSION = '0.36';
 }
 
 sub new {
@@ -718,7 +718,7 @@ sub new {
 
 package RemoteComponent;
 {
-  $RemoteComponent::VERSION = '0.35';
+  $RemoteComponent::VERSION = '0.36';
 }
 
 sub new {
@@ -731,7 +731,7 @@ sub new {
 
 package RemoteVersion;
 {
-  $RemoteVersion::VERSION = '0.35';
+  $RemoteVersion::VERSION = '0.36';
 }
 
 sub new {
@@ -982,7 +982,7 @@ JIRA::Client - An extended interface to JIRA's SOAP API.
 
 =head1 VERSION
 
-version 0.35
+version 0.36
 
 =head1 SYNOPSIS
 
@@ -1382,7 +1382,7 @@ expression. For example:
 
 The optional LIMIT argument specified the maximum number of issues
 that can be returned. It has a default limit of 1000, but this can be
-overriden by the JIRA server configuration.
+overridden by the JIRA server configuration.
 
 This method is meant to be used as a flexible interface for human
 beings to request a list of issues. Be warned, however, that you are
