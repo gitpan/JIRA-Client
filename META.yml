@@ -16,6 +16,7 @@ meta-spec:
 name: JIRA-Client
 requires:
   Carp: 0
+  Data::Util: 0
   File::Basename: 0
   MIME::Base64: 0
   SOAP::Lite: 0
@@ -23,5 +24,6 @@ requires:
   warnings: 0
 resources:
   bugtracker: https://github.com/gnustavo/JIRA-Client/issues
+  homepage: http://search.cpan.org/dist/JIRA-Client/
   repository: git://github.com/gnustavo/JIRA-Client.git
-version: 0.36
+version: 0.37

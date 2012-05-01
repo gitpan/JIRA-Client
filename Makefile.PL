@@ -24,13 +24,14 @@ my %WriteMakefileArgs = (
   "NAME" => "JIRA::Client",
   "PREREQ_PM" => {
     "Carp" => 0,
+    "Data::Util" => 0,
     "File::Basename" => 0,
     "MIME::Base64" => 0,
     "SOAP::Lite" => 0,
     "strict" => 0,
     "warnings" => 0
   },
-  "VERSION" => "0.36",
+  "VERSION" => "0.37",
   "test" => {
     "TESTS" => "t/*.t"
   }
