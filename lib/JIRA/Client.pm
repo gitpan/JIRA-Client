@@ -3,19 +3,26 @@ use warnings;
 
 package JIRA::Client;
 {
-  $JIRA::Client::VERSION = '0.37';
+  $JIRA::Client::VERSION = '0.38';
 }
 # ABSTRACT: An extended interface to JIRA's SOAP API.
 
 use Carp;
 use Data::Util qw(:check);
 use SOAP::Lite;
+use URI;
 
 
 sub new {
     my ($class, $base_url, $user, $pass, @args) = @_;
 
-    my $soap = SOAP::Lite->proxy("$base_url/rpc/soap/jirasoapservice-v2?wsdl", @args);
+    my $url = URI->new($base_url);
+    if ($url->path_query() =~ m:^/*$:) {
+	# Append the default WSDL resource if the URL does not specify any
+	$url->path_query('/rpc/soap/jirasoapservice-v2?wsdl');
+    }
+
+    my $soap = SOAP::Lite->proxy($url->as_string(), @args);
 
     # Make all scalars be encoded as strings by default.
     %{$soap->typelookup()} = (default => [0, sub {1}, 'as_string']);
@@ -24,9 +31,12 @@ sub new {
     croak $auth->faultcode(), ', ', $auth->faultstring()
         if defined $auth->fault();
 
+    my $auth_result = $auth->result()
+	or croak "Unknown error while connecting to JIRA. Please, check the URL.\n";
+
     my $self = {
         soap  => $soap,
-        auth  => $auth->result(),
+        auth  => $auth_result,
         iter  => undef,
         cache => {
             components => {}, # project_key => {name => RemoteComponent}
@@ -37,18 +47,9 @@ sub new {
     return bless $self, $class;
 }
 
-sub DESTROY {
-    # FIXME - This call to logout during global destruction in the
-    # context of the SVN::Hooks module doesn't work right. When it's
-    # called the 'soap' member is undefined for a reason that escapes
-    # me so far. Getting rid of the DESTROY method doesn't work either
-    # because it would trigger a call to AUTOLOAD which is unable to
-    # do it correctly. I think a call to logout is proper here to shut
-    # down the SOAP connection cleanly, but it doesn't seem to hurt
-    # not to call it.
-
-    # shift->logout();
-}
+# This empty DESTROY is necessary because we're using AUTOLOAD.
+# http://www.perlmonks.org/?node_id=93045
+sub DESTROY { }
 
 # The issue "https://jira.atlassian.com/browse/JRA-12300" explains why
 # some fields in JIRA have nonintuitive names. Here we map them.
@@ -668,7 +669,7 @@ sub filter_issues {
 
 package RemoteFieldValue;
 {
-  $RemoteFieldValue::VERSION = '0.37';
+  $RemoteFieldValue::VERSION = '0.38';
 }
 
 sub new {
@@ -684,7 +685,7 @@ sub new {
 
 package RemoteCustomFieldValue;
 {
-  $RemoteCustomFieldValue::VERSION = '0.37';
+  $RemoteCustomFieldValue::VERSION = '0.38';
 }
 
 sub new {
@@ -697,7 +698,7 @@ sub new {
 
 package RemoteComponent;
 {
-  $RemoteComponent::VERSION = '0.37';
+  $RemoteComponent::VERSION = '0.38';
 }
 
 sub new {
@@ -710,7 +711,7 @@ sub new {
 
 package RemoteVersion;
 {
-  $RemoteVersion::VERSION = '0.37';
+  $RemoteVersion::VERSION = '0.38';
 }
 
 sub new {
@@ -955,7 +956,7 @@ JIRA::Client - An extended interface to JIRA's SOAP API.
 
 =head1 VERSION
 
-version 0.37
+version 0.38
 
 =head1 SYNOPSIS
 
@@ -1048,12 +1049,20 @@ distinguish them and we can avoid future name clashes.
 
 =head2 B<new> JIRAURL, USER, PASSWD [, <SOAP::Lite arguments>]
 
-The JIRA::Client constructor requires three arguments. JIRAURL is
-JIRA's base URL from which will be constructed it's WSDL descriptor as
-C<$JIRAURL/rpc/soap/jirasoapservice-v2?wsdl>. USER and PASSWD are the
-credentials that will be used to authenticate into JIRA. Any other
-arguments will be passed to the L<SOAP::Lite> object that will be
-created to talk to JIRA.
+C<JIRAURL> can be simply the JIRA server's base URL, with no path,
+query or fragment (e.g., C<https://jira.example.net/>). In this case,
+the default WSDL descriptor path
+(C</rpc/soap/jirasoapservice-v2?wsdl>) will be appended to it in order
+to construct the underlying SOAP::Lite object.
+
+If your JIRA instance has a non-standard path to a WSDL service, you
+should pass the complete URL to it.
+
+C<USER> and C<PASSWD> are the credentials that will be used to
+authenticate into JIRA.
+
+Any other arguments will be passed to the L<SOAP::Lite> object that
+will be created to talk to JIRA.
 
 =head2 B<create_issue> HASH_REF [, SECURITYLEVEL]
 
