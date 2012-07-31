@@ -3,7 +3,7 @@ use warnings;
 
 package JIRA::Client;
 {
-  $JIRA::Client::VERSION = '0.38';
+  $JIRA::Client::VERSION = '0.39';
 }
 # ABSTRACT: An extended interface to JIRA's SOAP API.
 
@@ -14,20 +14,41 @@ use URI;
 
 
 sub new {
-    my ($class, $base_url, $user, $pass, @args) = @_;
+    my $class = shift;
 
-    my $url = URI->new($base_url);
-    if ($url->path_query() =~ m:^/*$:) {
-	# Append the default WSDL resource if the URL does not specify any
-	$url->path_query('/rpc/soap/jirasoapservice-v2?wsdl');
+    my $args;
+
+    if (@_ == 1) {
+	$args = shift;
+	is_hash_ref($args) or croak "$class::new sole argument must be a hash-ref.\n";
+	foreach my $arg (qw/baseurl user password/) {
+	    exists $args->{$arg}
+		or croak "Missing $arg key to $class::new hash argument.\n";
+	}
+	$args->{soapargs} = [] unless exists $args->{soapargs};
+    } elsif (@_ >= 3) {
+	my ($baseurl, $user, $password, @args) = @_;
+	$args = {
+	    baseurl  => $baseurl,
+	    user     => $user,
+	    password => $password,
+	    soapargs => \@args,
+	};
+    } else {
+	croak "Invalid number of arguments to $class::new.\n";
     }
 
-    my $soap = SOAP::Lite->proxy($url->as_string(), @args);
+    $args->{wsdl} = '/rpc/soap/jirasoapservice-v2?wsdl' unless exists $args->{wsdl};
+
+    my $url = URI->new($args->{baseurl});
+    $url->path_query($args->{wsdl});
+
+    my $soap = SOAP::Lite->proxy($url, @{$args->{soapargs}});
 
     # Make all scalars be encoded as strings by default.
-    %{$soap->typelookup()} = (default => [0, sub {1}, 'as_string']);
+    $soap->typelookup({default => [0, sub {1}, 'as_string']});
 
-    my $auth = $soap->login($user, $pass);
+    my $auth = $soap->login($args->{user}, $args->{password});
     croak $auth->faultcode(), ', ', $auth->faultstring()
         if defined $auth->fault();
 
@@ -669,7 +690,7 @@ sub filter_issues {
 
 package RemoteFieldValue;
 {
-  $RemoteFieldValue::VERSION = '0.38';
+  $RemoteFieldValue::VERSION = '0.39';
 }
 
 sub new {
@@ -685,7 +706,7 @@ sub new {
 
 package RemoteCustomFieldValue;
 {
-  $RemoteCustomFieldValue::VERSION = '0.38';
+  $RemoteCustomFieldValue::VERSION = '0.39';
 }
 
 sub new {
@@ -698,7 +719,7 @@ sub new {
 
 package RemoteComponent;
 {
-  $RemoteComponent::VERSION = '0.38';
+  $RemoteComponent::VERSION = '0.39';
 }
 
 sub new {
@@ -711,7 +732,7 @@ sub new {
 
 package RemoteVersion;
 {
-  $RemoteVersion::VERSION = '0.38';
+  $RemoteVersion::VERSION = '0.39';
 }
 
 sub new {
@@ -956,7 +977,7 @@ JIRA::Client - An extended interface to JIRA's SOAP API.
 
 =head1 VERSION
 
-version 0.38
+version 0.39
 
 =head1 SYNOPSIS
 
@@ -997,7 +1018,7 @@ L<http://docs.atlassian.com/software/jira/docs/api/rpc-jira-plugin/latest/com/at
 Moreover, it implements some other methods to make it easier to do
 some common operations.
 
-=head2 API METHODS
+=head1 API METHODS
 
 With the exception of the API C<login> and C<logout> methods, which
 aren't needed, all other methods are available through the
@@ -1037,7 +1058,7 @@ specified second.
 
 =back
 
-=head2 EXTRA METHODS
+=head1 EXTRA METHODS
 
 This module implements some extra methods to add useful functionality
 to the API. They are described below. Note that their names don't
@@ -1045,24 +1066,54 @@ follow the CamelCase convention used by the native API methods but the
 more Perlish underscore_separated_words convention so that you can
 distinguish them and we can avoid future name clashes.
 
-=head1 METHODS
+=head2 B<new> BASEURL, USER, PASSWD [, <SOAP::Lite arguments>]
 
-=head2 B<new> JIRAURL, USER, PASSWD [, <SOAP::Lite arguments>]
-
-C<JIRAURL> can be simply the JIRA server's base URL, with no path,
-query or fragment (e.g., C<https://jira.example.net/>). In this case,
-the default WSDL descriptor path
-(C</rpc/soap/jirasoapservice-v2?wsdl>) will be appended to it in order
+C<BASEURL> is the JIRA server's base URL (e.g.,
+C<https://jira.example.net/>), to which the default WSDL descriptor
+path (C</rpc/soap/jirasoapservice-v2?wsdl>) will be appended in order
 to construct the underlying SOAP::Lite object.
-
-If your JIRA instance has a non-standard path to a WSDL service, you
-should pass the complete URL to it.
 
 C<USER> and C<PASSWD> are the credentials that will be used to
 authenticate into JIRA.
 
 Any other arguments will be passed to the L<SOAP::Lite> object that
 will be created to talk to JIRA.
+
+=head2 B<new> HASH_REF
+
+You can invoke the constructor with a single hash-ref argument. The
+same arguments that are passed as a list above can be passed by name
+with a hash. This constructor is also more flexible, as it makes room
+for extra arguments.
+
+The valid hash keys are listed below.
+
+=over
+
+=item baseurl => STRING
+
+(Required) The JIRA server's base URL.
+
+=item wsdl => STRING
+
+(Optional) JIRA's standard WSDL descriptor path is
+C</rpc/soap/jirasoapservice-v2?wsdl>. If your JIRA instance has a
+non-standard path to the WSDL service, you may specify it here.
+
+=item user => STRING
+
+(Required) The username to authenticate into JIRA.
+
+=item password => STRING
+
+(Required) The password to authenticate into JIRA.
+
+=item soapargs => ARRAY_REF
+
+(Optional) Extra arguments to be passed to the L<SOAP::Lite> object
+that will be created to talk to JIRA.
+
+=back
 
 =head2 B<create_issue> HASH_REF [, SECURITYLEVEL]
 
@@ -1373,6 +1424,12 @@ method.
 
 The returned list of RemoteIssue objects is sorted by issue key.
 
+=head1 OTHER CONSTRUCTORS
+
+The JIRA SOAP API uses several types of objects (i.e., classes) for
+which the Perl SOAP interface does not provide the necessary
+constructors. This module implements some of them.
+
 =head2 B<RemoteFieldValue-E<gt>new> ID, VALUES
 
 The RemoteFieldValue object represents the value of a field of an
@@ -1410,12 +1467,6 @@ A scalar or an array of scalars.
 =head2 B<RemoteComponent-E<gt>new> ID, NAME
 
 =head2 B<RemoteVersion-E<gt>new> ID, NAME
-
-=head1 OTHER CONSTRUCTORS
-
-The JIRA SOAP API uses several types of objects (i.e., classes) for
-which the Perl SOAP interface does not provide the necessary
-constructors. This module implements some of them.
 
 =head1 EXAMPLES
 
