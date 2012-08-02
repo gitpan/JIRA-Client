@@ -3,14 +3,13 @@ use warnings;
 
 package JIRA::Client;
 {
-  $JIRA::Client::VERSION = '0.39';
+  $JIRA::Client::VERSION = '0.40';
 }
 # ABSTRACT: An extended interface to JIRA's SOAP API.
 
 use Carp;
 use Data::Util qw(:check);
 use SOAP::Lite;
-use URI;
 
 
 sub new {
@@ -40,8 +39,9 @@ sub new {
 
     $args->{wsdl} = '/rpc/soap/jirasoapservice-v2?wsdl' unless exists $args->{wsdl};
 
-    my $url = URI->new($args->{baseurl});
-    $url->path_query($args->{wsdl});
+    my $url = $args->{baseurl};
+    $url =~ s{/$}{}; # clean trailing slash
+    $url .= $args->{wsdl};
 
     my $soap = SOAP::Lite->proxy($url, @{$args->{soapargs}});
 
@@ -690,7 +690,7 @@ sub filter_issues {
 
 package RemoteFieldValue;
 {
-  $RemoteFieldValue::VERSION = '0.39';
+  $RemoteFieldValue::VERSION = '0.40';
 }
 
 sub new {
@@ -706,7 +706,7 @@ sub new {
 
 package RemoteCustomFieldValue;
 {
-  $RemoteCustomFieldValue::VERSION = '0.39';
+  $RemoteCustomFieldValue::VERSION = '0.40';
 }
 
 sub new {
@@ -719,7 +719,7 @@ sub new {
 
 package RemoteComponent;
 {
-  $RemoteComponent::VERSION = '0.39';
+  $RemoteComponent::VERSION = '0.40';
 }
 
 sub new {
@@ -732,7 +732,7 @@ sub new {
 
 package RemoteVersion;
 {
-  $RemoteVersion::VERSION = '0.39';
+  $RemoteVersion::VERSION = '0.40';
 }
 
 sub new {
@@ -977,7 +977,7 @@ JIRA::Client - An extended interface to JIRA's SOAP API.
 
 =head1 VERSION
 
-version 0.39
+version 0.40
 
 =head1 SYNOPSIS
 
@@ -1069,9 +1069,10 @@ distinguish them and we can avoid future name clashes.
 =head2 B<new> BASEURL, USER, PASSWD [, <SOAP::Lite arguments>]
 
 C<BASEURL> is the JIRA server's base URL (e.g.,
-C<https://jira.example.net/>), to which the default WSDL descriptor
-path (C</rpc/soap/jirasoapservice-v2?wsdl>) will be appended in order
-to construct the underlying SOAP::Lite object.
+C<https://jira.example.net> or C<https://example.net/jira>), to which
+the default WSDL descriptor path
+(C</rpc/soap/jirasoapservice-v2?wsdl>) will be appended in order to
+construct the underlying SOAP::Lite object.
 
 C<USER> and C<PASSWD> are the credentials that will be used to
 authenticate into JIRA.

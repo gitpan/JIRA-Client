@@ -27,11 +27,10 @@ my %WriteMakefileArgs = (
     "File::Basename" => 0,
     "MIME::Base64" => 0,
     "SOAP::Lite" => 0,
-    "URI" => 0,
     "strict" => 0,
     "warnings" => 0
   },
-  "VERSION" => "0.39",
+  "VERSION" => "0.40",
   "test" => {
     "TESTS" => "t/*.t"
   }
