@@ -3,7 +3,7 @@ use warnings;
 
 package JIRA::Client;
 {
-  $JIRA::Client::VERSION = '0.40';
+  $JIRA::Client::VERSION = '0.41';
 }
 # ABSTRACT: An extended interface to JIRA's SOAP API.
 
@@ -661,36 +661,38 @@ sub attach_strings_to_issue {
 }
 
 
-sub filter_issues {
+sub filter_issues_unsorted {
     my ($self, $filter, $limit) = @_;
 
     $filter =~ s/^\s*"?//;
     $filter =~ s/"?\s*$//;
 
-    my $issues = do {
-	if ($filter =~ /^(?:[A-Z]+-\d+\s+)*[A-Z]+-\d+$/i) {
-	    # space separated key list
-	    [map {$self->getIssue(uc $_)} split / /, $filter];
-	} elsif ($filter =~ /^[\w-]+$/i) {
-	    # saved filter
-	    $self->getIssuesFromFilterWithLimit($filter, 0, $limit || 1000);
-	} else {
-	    # JQL filter
-	    $self->getIssuesFromJqlSearch($filter, $limit || 1000);
-	}
-    };
+    if ($filter =~ /^(?:[A-Z]+-\d+\s+)*[A-Z]+-\d+$/i) {
+        # space separated key list
+        return map {$self->getIssue(uc $_)} split / /, $filter;
+    } elsif ($filter =~ /^[\w-]+$/i) {
+        # saved filter
+        return @{$self->getIssuesFromFilterWithLimit($filter, 0, $limit || 1000)};
+    } else {
+        # JQL filter
+        return @{$self->getIssuesFromJqlSearch($filter, $limit || 1000)};
+    }
+}
 
+
+sub filter_issues {
     # Order the issues by project key and then by numeric value using
     # a Schwartzian transform.
     map  {$_->[2]}
 	sort {$a->[0] cmp $b->[0] or $a->[1] <=> $b->[1]}
-	    map  {my ($p, $n) = ($_->{key} =~ /([A-Z]+)-(\d+)/); [$p, $n, $_]} @$issues;
+	    map  {my ($p, $n) = ($_->{key} =~ /([A-Z]+)-(\d+)/); [$p, $n, $_]}
+                filter_issues_unsorted(@_);
 }
 
 
 package RemoteFieldValue;
 {
-  $RemoteFieldValue::VERSION = '0.40';
+  $RemoteFieldValue::VERSION = '0.41';
 }
 
 sub new {
@@ -706,7 +708,7 @@ sub new {
 
 package RemoteCustomFieldValue;
 {
-  $RemoteCustomFieldValue::VERSION = '0.40';
+  $RemoteCustomFieldValue::VERSION = '0.41';
 }
 
 sub new {
@@ -719,7 +721,7 @@ sub new {
 
 package RemoteComponent;
 {
-  $RemoteComponent::VERSION = '0.40';
+  $RemoteComponent::VERSION = '0.41';
 }
 
 sub new {
@@ -732,7 +734,7 @@ sub new {
 
 package RemoteVersion;
 {
-  $RemoteVersion::VERSION = '0.40';
+  $RemoteVersion::VERSION = '0.41';
 }
 
 sub new {
@@ -969,7 +971,10 @@ sub AUTOLOAD {
 1; # End of JIRA::Client
 
 __END__
+
 =pod
+
+=encoding UTF-8
 
 =head1 NAME
 
@@ -977,7 +982,7 @@ JIRA::Client - An extended interface to JIRA's SOAP API.
 
 =head1 VERSION
 
-version 0.40
+version 0.41
 
 =head1 SYNOPSIS
 
@@ -1382,7 +1387,7 @@ file names and the values their contents.
 The method retuns the value returned by the
 B<addBase64EncodedAttachmentsToIssue> API method.
 
-=head2 B<filter_issues> FILTER [, LIMIT]
+=head2 B<filter_issues_unsorted> FILTER [, LIMIT]
 
 This method returns a list of RemoteIssue objects from the specified
 FILTER, which is a string that is understood in one of these ways (in
@@ -1423,7 +1428,10 @@ beings to request a list of issues. Be warned, however, that you are
 responsible to de-taint the FILTER argument before passing it to the
 method.
 
-The returned list of RemoteIssue objects is sorted by issue key.
+=head2 B<filter_issues> FILTER [, LIMIT]
+
+This method invokes the B<filter_issues_unsorted> method with the same
+arguments and returns the list of RemoteIssue objects sorted by issue key.
 
 =head1 OTHER CONSTRUCTORS
 
@@ -1480,10 +1488,9 @@ Gustavo L. de M. Chaves <gnustavo@cpan.org>
 
 =head1 COPYRIGHT AND LICENSE
 
-This software is copyright (c) 2012 by CPqD.
+This software is copyright (c) 2014 by CPqD.
 
 This is free software; you can redistribute it and/or modify it under
 the same terms as the Perl 5 programming language system itself.
 
 =cut
-
