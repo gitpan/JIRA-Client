@@ -1,11 +1,11 @@
-use strict;
-use warnings;
-
 package JIRA::Client;
 {
-  $JIRA::Client::VERSION = '0.41';
+  $JIRA::Client::VERSION = '0.42';
 }
-# ABSTRACT: An extended interface to JIRA's SOAP API.
+# ABSTRACT: Extended interface to JIRA's SOAP API
+
+use strict;
+use warnings;
 
 use Carp;
 use Data::Util qw(:check);
@@ -13,20 +13,22 @@ use SOAP::Lite;
 
 
 sub new {
-    my $class = shift;
+    my ($class, @args) = @_;
 
     my $args;
 
-    if (@_ == 1) {
-	$args = shift;
+    if (@args == 1) {
+	$args = shift @args;
 	is_hash_ref($args) or croak "$class::new sole argument must be a hash-ref.\n";
 	foreach my $arg (qw/baseurl user password/) {
 	    exists $args->{$arg}
 		or croak "Missing $arg key to $class::new hash argument.\n";
 	}
 	$args->{soapargs} = [] unless exists $args->{soapargs};
-    } elsif (@_ >= 3) {
-	my ($baseurl, $user, $password, @args) = @_;
+    } elsif (@args >= 3) {
+        my $baseurl  = shift @args;
+        my $user     = shift @args;
+        my $password = shift @args;
 	$args = {
 	    baseurl  => $baseurl,
 	    user     => $user,
@@ -314,6 +316,8 @@ sub _flaten_components_and_versions {
     foreach my $field (grep {exists $params->{$_}} keys %JRA12300) {
 	$params->{$JRA12300{$field}} = delete $params->{$field};
     }
+
+    return;
 }
 
 
@@ -604,6 +608,7 @@ sub attach_files_to_issue {
 	    open my $fh, '<:raw', $file
 		or croak "Can't open $file: $!\n";
 	    push @attachments, $fh;
+            close $fh;
 	} elsif (is_hash_ref($file)) {
 	    while (my ($name, $contents) = each %$file) {
 		push @filenames, $name;
@@ -611,6 +616,7 @@ sub attach_files_to_issue {
 		    open my $fh, '<:raw', $contents
 			or croak "Can't open $contents: $!\n";
 		    push @attachments, $fh;
+                    close $fh;
 		} elsif (is_glob_ref($contents)
 			     || is_instance($contents => 'IO::File')
 				 || is_instance($contents => 'FileHandle')) {
@@ -681,18 +687,23 @@ sub filter_issues_unsorted {
 
 
 sub filter_issues {
+    my ($self, $filter, $limit) = @_;
+
     # Order the issues by project key and then by numeric value using
     # a Schwartzian transform.
-    map  {$_->[2]}
-	sort {$a->[0] cmp $b->[0] or $a->[1] <=> $b->[1]}
-	    map  {my ($p, $n) = ($_->{key} =~ /([A-Z]+)-(\d+)/); [$p, $n, $_]}
-                filter_issues_unsorted(@_);
+    return
+        map  {$_->[2]}
+            sort {$a->[0] cmp $b->[0] or $a->[1] <=> $b->[1]}
+                map  {my ($p, $n) = ($_->{key} =~ /([A-Z]+)-(\d+)/); [$p, $n, $_]}
+                    filter_issues_unsorted($self, $filter, $limit);
 }
 
 
+## no critic (Modules::ProhibitMultiplePackages)
+
 package RemoteFieldValue;
 {
-  $RemoteFieldValue::VERSION = '0.41';
+  $RemoteFieldValue::VERSION = '0.42';
 }
 
 sub new {
@@ -708,7 +719,7 @@ sub new {
 
 package RemoteCustomFieldValue;
 {
-  $RemoteCustomFieldValue::VERSION = '0.41';
+  $RemoteCustomFieldValue::VERSION = '0.42';
 }
 
 sub new {
@@ -721,7 +732,7 @@ sub new {
 
 package RemoteComponent;
 {
-  $RemoteComponent::VERSION = '0.41';
+  $RemoteComponent::VERSION = '0.42';
 }
 
 sub new {
@@ -734,7 +745,7 @@ sub new {
 
 package RemoteVersion;
 {
-  $RemoteVersion::VERSION = '0.41';
+  $RemoteVersion::VERSION = '0.42';
 }
 
 sub new {
@@ -978,11 +989,11 @@ __END__
 
 =head1 NAME
 
-JIRA::Client - An extended interface to JIRA's SOAP API.
+JIRA::Client - Extended interface to JIRA's SOAP API
 
 =head1 VERSION
 
-version 0.41
+version 0.42
 
 =head1 SYNOPSIS
 
@@ -1014,6 +1025,11 @@ version 0.41
 
 JIRA is a proprietary bug tracking system from Atlassian
 (L<http://www.atlassian.com/software/jira/>).
+
+B<DEPRECATION WARNING>: Please, before using this module consider using the
+newer L<JIRA::REST> because JIRA's SOAP API was
+L<deprecated|https://developer.atlassian.com/display/JIRADEV/SOAP+and+XML-RPC+API+Deprecated+in+JIRA+6.0>
+on JIRA 6.0 and won't be available anymore on JIRA 7.0.
 
 This module implements an Object Oriented wrapper around JIRA's SOAP
 API, which is specified in
@@ -1481,6 +1497,14 @@ A scalar or an array of scalars.
 
 Please, see the examples under the C<examples> directory in the module
 distribution.
+
+=head1 SEE ALSO
+
+=over
+
+=item * L<JIRA::REST>
+
+=back
 
 =head1 AUTHOR
 
